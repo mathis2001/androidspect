@@ -80,7 +80,7 @@
 45-->[androidx.core:core:1.15.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/5f0759920ebfa61cf604c59470d37d26/transformed/core-1.15.0/AndroidManifest.xml:26:22-94
 46
 47    <application
-47-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:35:5-73:19
+47-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:35:5-74:19
 48        android:name="com.androidspect.AndroidSpectApp"
 48-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:36:9-40
 49        android:allowBackup="false"
@@ -88,145 +88,147 @@
 50        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 50-->[androidx.core:core:1.15.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/5f0759920ebfa61cf604c59470d37d26/transformed/core-1.15.0/AndroidManifest.xml:28:18-86
 51        android:dataExtractionRules="@xml/data_extraction_rules"
-51-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:38:9-65
+51-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:39:9-65
 52        android:debuggable="true"
 53        android:extractNativeLibs="false"
 54        android:icon="@mipmap/ic_launcher"
-54-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:39:9-43
+54-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:40:9-43
 55        android:label="@string/app_name"
-55-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:41:9-41
-56        android:networkSecurityConfig="@xml/network_security_config"
-56-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:44:9-69
-57        android:roundIcon="@mipmap/ic_launcher_round"
-57-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:40:9-54
-58        android:supportsRtl="true"
-58-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:42:9-35
-59        android:theme="@style/Theme.AndroidSpect"
-59-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:43:9-50
-60        android:usesCleartextTraffic="true" >
-60-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:45:9-44
-61        <activity
-61-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:48:9-57:20
-62            android:name="com.androidspect.MainActivity"
-62-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:49:13-41
-63            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
-63-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:51:13-113
-64            android:exported="true"
-64-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:50:13-36
-65            android:theme="@style/Theme.AndroidSpect" >
-65-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:52:13-54
-66            <intent-filter>
-66-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:53:13-56:29
-67                <action android:name="android.intent.action.MAIN" />
-67-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:13-65
-67-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:21-62
-68
-69                <category android:name="android.intent.category.LAUNCHER" />
-69-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:55:17-77
-69-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:55:27-74
-70            </intent-filter>
-71        </activity>
-72
-73        <service
-73-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:59:9-62:56
-74            android:name="com.androidspect.server.ServerService"
-74-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:60:13-49
-75            android:exported="false"
-75-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:61:13-37
-76            android:foregroundServiceType="dataSync" />
-76-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:62:13-53
-77
-78        <receiver
-78-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:64:9-72:20
-79            android:name="com.androidspect.server.BootReceiver"
-79-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:65:13-48
-80            android:enabled="true"
-80-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:67:13-35
-81            android:exported="true" >
-81-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:66:13-36
-82            <intent-filter>
-82-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:68:13-71:29
-83                <action android:name="android.intent.action.BOOT_COMPLETED" />
-83-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:69:17-79
-83-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:69:25-76
-84                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-84-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:17-82
-84-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:25-79
-85            </intent-filter>
-86        </receiver>
-87
-88        <activity
-88-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:23:9-25:39
-89            android:name="androidx.compose.ui.tooling.PreviewActivity"
-89-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:24:13-71
-90            android:exported="true" />
-90-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:25:13-36
-91
-92        <provider
-92-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:24:9-32:20
-93            android:name="androidx.startup.InitializationProvider"
-93-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:25:13-67
-94            android:authorities="com.androidspect.androidx-startup"
-94-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:26:13-68
-95            android:exported="false" >
-95-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:27:13-37
-96            <meta-data
-96-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:29:13-31:52
-97                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-97-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:30:17-78
-98                android:value="androidx.startup" />
-98-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:31:17-49
-99            <meta-data
-99-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
-100                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-100-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
-101                android:value="androidx.startup" />
-101-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
-102            <meta-data
-102-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
-103                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-103-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
-104                android:value="androidx.startup" />
-104-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
-105        </provider>
-106
-107        <receiver
-107-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
-108            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-108-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
-109            android:directBootAware="false"
-109-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
-110            android:enabled="true"
-110-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
-111            android:exported="true"
-111-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
-112            android:permission="android.permission.DUMP" >
-112-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
-113            <intent-filter>
-113-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
-114                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-114-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
-114-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
-115            </intent-filter>
-116            <intent-filter>
-116-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
-117                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-117-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
-117-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
-118            </intent-filter>
-119            <intent-filter>
-119-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
-120                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-120-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
-120-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
-121            </intent-filter>
-122            <intent-filter>
-122-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
-123                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-123-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
-123-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
-124            </intent-filter>
-125        </receiver>
-126    </application>
-127
-128</manifest>
+55-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:42:9-41
+56        android:largeHeap="true"
+56-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:38:9-33
+57        android:networkSecurityConfig="@xml/network_security_config"
+57-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:45:9-69
+58        android:roundIcon="@mipmap/ic_launcher_round"
+58-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:41:9-54
+59        android:supportsRtl="true"
+59-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:43:9-35
+60        android:theme="@style/Theme.AndroidSpect"
+60-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:44:9-50
+61        android:usesCleartextTraffic="true" >
+61-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:46:9-44
+62        <activity
+62-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:49:9-58:20
+63            android:name="com.androidspect.MainActivity"
+63-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:50:13-41
+64            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+64-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:52:13-113
+65            android:exported="true"
+65-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:51:13-36
+66            android:theme="@style/Theme.AndroidSpect" >
+66-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:53:13-54
+67            <intent-filter>
+67-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:54:13-57:29
+68                <action android:name="android.intent.action.MAIN" />
+68-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:13-65
+68-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:21-62
+69
+70                <category android:name="android.intent.category.LAUNCHER" />
+70-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:56:17-77
+70-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:56:27-74
+71            </intent-filter>
+72        </activity>
+73
+74        <service
+74-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:60:9-63:56
+75            android:name="com.androidspect.server.ServerService"
+75-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:61:13-49
+76            android:exported="false"
+76-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:62:13-37
+77            android:foregroundServiceType="dataSync" />
+77-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:63:13-53
+78
+79        <receiver
+79-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:65:9-73:20
+80            android:name="com.androidspect.server.BootReceiver"
+80-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:66:13-48
+81            android:enabled="true"
+81-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:68:13-35
+82            android:exported="true" >
+82-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:67:13-36
+83            <intent-filter>
+83-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:69:13-72:29
+84                <action android:name="android.intent.action.BOOT_COMPLETED" />
+84-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:17-79
+84-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:25-76
+85                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+85-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:71:17-82
+85-->/home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:71:25-79
+86            </intent-filter>
+87        </receiver>
+88
+89        <activity
+89-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:23:9-25:39
+90            android:name="androidx.compose.ui.tooling.PreviewActivity"
+90-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:24:13-71
+91            android:exported="true" />
+91-->[androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:25:13-36
+92
+93        <provider
+93-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:24:9-32:20
+94            android:name="androidx.startup.InitializationProvider"
+94-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:25:13-67
+95            android:authorities="com.androidspect.androidx-startup"
+95-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:26:13-68
+96            android:exported="false" >
+96-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:27:13-37
+97            <meta-data
+97-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:29:13-31:52
+98                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+98-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:30:17-78
+99                android:value="androidx.startup" />
+99-->[androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:31:17-49
+100            <meta-data
+100-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+101                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+101-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+102                android:value="androidx.startup" />
+102-->[androidx.emoji2:emoji2:1.3.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/122d85dbe92c6c9bd9a665b86462f2c2/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+103            <meta-data
+103-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
+104                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+104-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
+105                android:value="androidx.startup" />
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
+106        </provider>
+107
+108        <receiver
+108-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
+109            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+109-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
+110            android:directBootAware="false"
+110-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
+111            android:enabled="true"
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
+112            android:exported="true"
+112-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
+113            android:permission="android.permission.DUMP" >
+113-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
+114            <intent-filter>
+114-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
+115                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+115-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
+115-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
+116            </intent-filter>
+117            <intent-filter>
+117-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
+118                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+118-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
+118-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
+119            </intent-filter>
+120            <intent-filter>
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
+121                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
+122            </intent-filter>
+123            <intent-filter>
+123-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
+124                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/144bf0430c6f9f987ab5c7d7898e08bb/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
+125            </intent-filter>
+126        </receiver>
+127    </application>
+128
+129</manifest>

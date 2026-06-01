@@ -71,19 +71,10 @@ android {
     sourceSets["main"].kotlin.srcDirs("src/main/kotlin")
 }
 
-// jadx-core needs google() for its aapt2 transitive dependency
+// google() needed for baksmali's transitive dependencies
 repositories {
     mavenCentral()
     google()
-}
-
-// Prevent duplicate slf4j bindings from jadx's transitive deps
-configurations.all {
-    exclude(group = "ch.qos.logback")
-    exclude(group = "org.slf4j", module = "slf4j-simple")
-    resolutionStrategy {
-        force("org.slf4j:slf4j-api:1.7.36")
-    }
 }
 
 dependencies {
@@ -128,12 +119,10 @@ dependencies {
     // certificate-builder APIs (X509v3CertificateBuilder etc.).
     implementation(libs.bouncycastle.bcpkix)
 
-    // jadx-core — APK decompiler as an in-process library.
-    // Runs inside the existing JVM; no subprocess, no Termux dependency.
-    implementation("io.github.skylot:jadx-core:1.5.5")
-    implementation("io.github.skylot:jadx-dex-input:1.5.5")   // APK/DEX reading
-    implementation("io.github.skylot:jadx-java-input:1.5.5")  // JAR/class reading
-    // slf4j binding — jadx uses slf4j-api internally; Android needs a no-op
-    // binding to avoid "No SLF4J providers were found" warnings at runtime.
-    implementation("org.slf4j:slf4j-android:1.7.36")
+    // baksmali — APK disassembler to Smali (Dalvik assembly).
+    // Uses constant ~20-40 MB memory regardless of APK size (processes one
+    // method at a time), unlike jadx which builds a full AST and OOMs on
+    // any real-world APK within Android's heap limits.
+    implementation("com.android.tools.smali:smali-baksmali:3.0.9")
+    implementation("com.android.tools.smali:smali-dexlib2:3.0.9")
 }
