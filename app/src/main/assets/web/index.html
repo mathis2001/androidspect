@@ -155,6 +155,7 @@
                 <a class="main-tab tab" data-tab="manifest"   role="tab"><svg class="ic ic-sm"><use href="#i-file-text"/></svg>Manifest</a>
                 <a class="main-tab tab" data-tab="components" role="tab"><svg class="ic ic-sm"><use href="#i-blocks"/></svg>Components</a>
                 <a class="main-tab tab" data-tab="native"     role="tab"><svg class="ic ic-sm"><use href="#i-cpu"/></svg>Native</a>
+                <a class="main-tab tab" data-tab="code"     role="tab"><svg class="ic ic-sm"><use href="#i-file-text"/></svg>Code</a>
             </nav>
 
             <div class="panels">
@@ -263,6 +264,73 @@
                     </div>
                     <div id="native-list" class="native-grid"></div>
                 </section>
+
+                <!-- Code -->
+                <section class="panel hidden" data-tab="code">
+ 
+				    <!-- ── Toolbar ──────────────────────────────────────────────────── -->
+				    <div class="toolbar">
+				        <button class="btn small"       id="code-decompile"  title="Start decompiling the selected app with jadx">⟨/⟩ Decompile</button>
+				        <button class="btn ghost small" id="code-jobs-refresh" title="Refresh job list">↻</button>
+				        <span class="breadcrumb"        id="code-crumb"></span>
+				        <span class="muted small"       id="code-status"></span>
+				        <span style="flex:1"></span>
+				        <input class="input mono small" id="code-search-input"
+				               placeholder="Search source…  (Enter)"
+				               style="width:200px"
+				               title="Grep across decompiled source">
+				        <button class="btn ghost small" id="code-search-btn">🔍 Search</button>
+				        <button class="btn ghost small" id="code-zip-btn"    title="Download full decompiled tree as ZIP" disabled>⤓ ZIP</button>
+				    </div>
+				 
+				    <!-- ── Body: tree left, viewer right ────────────────────────────── -->
+				    <div class="split code-split">
+				 
+				        <!-- LEFT — job selector + file tree -->
+				        <div class="list-pane code-tree-pane" id="code-tree-pane">
+				 
+				            <!-- Job list -->
+				            <div class="code-jobs-header">
+				                <span class="muted small">Jobs</span>
+				            </div>
+				            <div id="code-job-list" class="code-job-list">
+				                <div class="empty small">No jobs yet. Select an app and click Decompile.</div>
+				            </div>
+				 
+				            <!-- Progress (shown while a job is RUNNING) -->
+				            <div id="code-progress-wrap" class="code-progress-wrap" hidden>
+				                <div class="code-progress-track">
+				                    <div class="code-progress-fill" id="code-progress-fill"></div>
+				                </div>
+				                <span class="muted small" id="code-progress-msg">Starting…</span>
+				            </div>
+				 
+				            <!-- File tree -->
+				            <div class="code-tree-header">
+				                <span class="muted small">Source tree</span>
+				            </div>
+				            <div id="code-tree" class="code-tree">
+				                <div class="empty small">Tree loads after decompilation completes.</div>
+				            </div>
+				        </div>
+				 
+				        <!-- RIGHT — tab bar + editor / search results -->
+				        <div class="content-pane code-editor-pane" id="code-editor-pane">
+				 
+				            <!-- Open-file tab strip -->
+				            <div id="code-tabs" class="code-tabs" role="tablist"></div>
+				 
+				            <!-- Search results (shown instead of editor when a search is active) -->
+				            <div id="code-search-results" class="code-search-results hidden"></div>
+				 
+				            <!-- Syntax-highlighted code viewer -->
+				            <div id="code-viewer" class="code-viewer grow-y">
+				                <div class="empty">Select a file from the tree to view its source.</div>
+				            </div>
+				 
+				        </div>
+				    </div>
+				</section>
 
                 <!-- PROCESSES -->
                 <section class="panel hidden" data-tab="processes">

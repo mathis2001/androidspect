@@ -12,6 +12,7 @@ import com.androidspect.server.routes.prefsRoutes
 import com.androidspect.server.routes.sqliteRoutes
 import com.androidspect.server.routes.systemRoutes
 import com.androidspect.server.ws.logcatWebSocket
+import com.androidspect.server.routes.decompilerRoutes
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -155,6 +156,7 @@ class AndroidSpectServer(
                 sqliteRoutes(reader)
                 manifestRoutes(context)
                 liveRoutes(context)
+                decompilerRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()
             }

@@ -880,3 +880,208 @@ td.num  { color: var(--cyan); text-align: right; }
     .split.sqlite-split { grid-template-columns: 1fr; }
     .pref-row { grid-template-columns: 120px 1fr; }
 }
+
+/* ── Tree pane ───────────────────────────────────────────────────────── */
+.code-split { gap: 0; }
+ 
+.code-tree-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    max-width: 320px;
+    width: 260px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+ 
+.code-jobs-header,
+.code-tree-header {
+    padding: 6px 10px 4px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+ 
+/* Job list */
+.code-job-list {
+    flex-shrink: 0;
+    max-height: 148px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+}
+ 
+.code-job-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+    transition: background 0.1s;
+}
+.code-job-item:hover            { background: var(--surface-2, var(--hover)); }
+.code-job-item.active           { border-left-color: var(--accent); background: var(--surface-2, var(--hover)); }
+.code-job-item .job-name        { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-job-badge                 { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+.code-job-badge.done            { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.code-job-badge.running         { background: color-mix(in srgb, #f0b03a 20%, transparent); color: #f0b03a; }
+.code-job-badge.error           { background: color-mix(in srgb, var(--danger,#e05) 20%, transparent); color: var(--danger,#e05); }
+.code-job-badge.pending         { background: color-mix(in srgb, var(--muted-fg,#888) 20%, transparent); color: var(--muted-fg,#888); }
+ 
+/* Progress bar */
+.code-progress-wrap {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.code-progress-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+.code-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+ 
+/* File tree */
+.code-tree {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+}
+ 
+.code-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: 3px;
+    transition: background 0.1s;
+    user-select: none;
+}
+.code-tree-row:hover    { background: var(--hover, rgba(255,255,255,.05)); }
+.code-tree-row.selected { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.code-tree-row .ctr-icon { font-size: 11px; flex-shrink: 0; opacity: 0.7; }
+.code-tree-row .ctr-name { overflow: hidden; text-overflow: ellipsis; }
+.code-tree-children      { display: none; }
+.code-tree-children.open { display: block; }
+ 
+/* ── Editor pane ─────────────────────────────────────────────────────── */
+.code-editor-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+ 
+/* Tab strip */
+.code-tabs {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+    min-height: 32px;
+    background: var(--surface-1, var(--bg-2, transparent));
+}
+.code-tabs::-webkit-scrollbar { height: 3px; }
+.code-tabs::-webkit-scrollbar-thumb { background: var(--border); }
+ 
+.code-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border-right: 1px solid var(--border);
+    font-size: 11px;
+    font-family: var(--mono, monospace);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--muted-fg, #888);
+    transition: color 0.1s, background 0.1s;
+}
+.code-tab:hover           { color: var(--fg); background: var(--hover, rgba(255,255,255,.05)); }
+.code-tab.active          { color: var(--fg); border-bottom: 2px solid var(--accent); background: var(--bg, transparent); }
+.code-tab-close           { opacity: 0; line-height: 1; font-size: 13px; cursor: pointer; margin-left: 2px; }
+.code-tab:hover .code-tab-close { opacity: 0.5; }
+.code-tab-close:hover     { opacity: 1 !important; color: var(--danger, #e05); }
+ 
+/* Search results */
+.code-search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    font-size: 12px;
+}
+.code-search-results.hidden { display: none; }
+.code-sr-file {
+    font-family: var(--mono, monospace);
+    font-size: 11px;
+    color: var(--accent);
+    margin: 10px 0 3px;
+    cursor: pointer;
+}
+.code-sr-file:hover { text-decoration: underline; }
+.code-sr-line {
+    padding: 2px 8px;
+    background: var(--surface-1, rgba(255,255,255,.03));
+    border-radius: 3px;
+    margin-bottom: 2px;
+    font-family: var(--mono, monospace);
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.code-sr-lineno { color: var(--accent); margin-right: 8px; opacity: 0.7; }
+ 
+/* Code viewer */
+.code-viewer {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+.code-viewer .empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+ 
+/* Line-number layout inside the viewer */
+.code-gutter-wrap { display: flex; min-height: 100%; }
+.code-gutter {
+    padding: 14px 10px 14px 14px;
+    text-align: right;
+    font-family: var(--mono, monospace);
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--muted-fg, #555);
+    user-select: none;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface-1, rgba(0,0,0,.15));
+    min-width: 44px;
+}
+.code-body {
+    padding: 14px 16px;
+    flex: 1;
+}
+/* Reuse existing .code-block for the <code> element so it inherits the
+   app's monospace + colour token already defined in app.css */
+.code-viewer pre  { margin: 0; }
+.code-viewer code { font-size: 12px; line-height: 1.65; }

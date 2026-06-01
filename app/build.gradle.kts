@@ -57,7 +57,10 @@ android {
                 // BouncyCastle multi-release JARs ship OSGi metadata that
                 // collides between bcprov / bcpkix / bcutil - we never load
                 // them through OSGi anyway.
-                "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+                "/META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                // jadx-core transitive deps
+                "META-INF/versions/**",
+                "META-INF/*.kotlin_module"
             )
         }
         jniLibs {
@@ -66,6 +69,21 @@ android {
     }
 
     sourceSets["main"].kotlin.srcDirs("src/main/kotlin")
+}
+
+// jadx-core needs google() for its aapt2 transitive dependency
+repositories {
+    mavenCentral()
+    google()
+}
+
+// Prevent duplicate slf4j bindings from jadx's transitive deps
+configurations.all {
+    exclude(group = "ch.qos.logback")
+    exclude(group = "org.slf4j", module = "slf4j-simple")
+    resolutionStrategy {
+        force("org.slf4j:slf4j-api:1.7.36")
+    }
 }
 
 dependencies {
@@ -109,4 +127,13 @@ dependencies {
     // embedded HTTPS server. Android's bundled BC doesn't expose the
     // certificate-builder APIs (X509v3CertificateBuilder etc.).
     implementation(libs.bouncycastle.bcpkix)
+
+    // jadx-core — APK decompiler as an in-process library.
+    // Runs inside the existing JVM; no subprocess, no Termux dependency.
+    implementation("io.github.skylot:jadx-core:1.5.5")
+    implementation("io.github.skylot:jadx-dex-input:1.5.5")   // APK/DEX reading
+    implementation("io.github.skylot:jadx-java-input:1.5.5")  // JAR/class reading
+    // slf4j binding — jadx uses slf4j-api internally; Android needs a no-op
+    // binding to avoid "No SLF4J providers were found" warnings at runtime.
+    implementation("org.slf4j:slf4j-android:1.7.36")
 }
