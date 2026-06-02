@@ -1094,11 +1094,92 @@ td.num  { color: var(--cyan); text-align: right; }
 .code-viewer pre  { margin: 0; }
 .code-viewer code { font-size: 12px; line-height: 1.65; }
 
-/* ---- Notes tab ---- */
+/* ---- Notes right rail ---- */
+.notes-rail {
+    flex-shrink: 0;
+    display: flex;
+    background: var(--bg-2);
+    border-left: 1px solid var(--line);
+    transition: width .18s ease;
+    width: 340px;
+    position: relative;
+}
+.notes-rail.collapsed { width: 38px; }
+/* While the user drags the resizer we kill the transition so it tracks
+   the cursor 1:1 instead of lagging behind. */
+.notes-rail.resizing { transition: none; user-select: none; }
+
+/* Drag-to-resize grip on the rail's left edge. Sits above the handle and
+   widens its hit area on hover. Hidden when collapsed (nothing to resize). */
+.notes-rail-resizer {
+    position: absolute;
+    left: -3px; top: 0; bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 5;
+    background: transparent;
+    transition: background .15s;
+}
+.notes-rail-resizer:hover,
+.notes-rail.resizing .notes-rail-resizer { background: var(--accent); opacity: 0.6; }
+.notes-rail.collapsed .notes-rail-resizer { display: none; }
+
+/* Vertical handle along the rail's left edge — click to expand/collapse */
+.notes-rail-handle {
+    width: 38px;
+    flex-shrink: 0;
+    background: var(--bg-2);
+    border: none;
+    border-right: 1px solid var(--line);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+    transition: color .15s, background .15s;
+}
+.notes-rail:not(.collapsed) .notes-rail-handle { border-right-color: var(--line); }
+.notes-rail-handle:hover { color: var(--accent); background: var(--bg-3, var(--elevated)); }
+.notes-rail-handle-label {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+/* When expanded, the handle just shows the icon; the label lives in the head */
+.notes-rail:not(.collapsed) .notes-rail-handle-label { display: none; }
+
+.notes-rail-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.notes-rail.collapsed .notes-rail-body { display: none; }
+
+.notes-rail-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px 6px;
+    flex-shrink: 0;
+}
+.notes-rail-title {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text);
+}
+.notes-rail-toolbar { padding: 0 10px 8px; gap: 6px; flex-wrap: wrap; }
+
+/* ---- Notes editor / preview (shared) ---- */
 .notes-wrap {
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    padding: 0 10px 10px;
 }
 .notes-editor {
     flex: 1;

@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','notes'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -350,12 +350,14 @@ function renderSelectedApp() {
     const el = $('#selected-app');
     const actionsBlock = $('#sb-actions');
     const inspectTabs  = $('#main-tabs');
+    const notesRail    = $('#notes-rail');
     if (!S.appInfo) {
         el.innerHTML = '<span class="muted small">Pick an app on the left to start.</span>';
         // Hide everything that needs an app context: action icons in the
         // sidebar + the per-app inspection tabs above the panels.
         if (actionsBlock) actionsBlock.hidden = true;
         if (inspectTabs)  inspectTabs.hidden  = true;
+        if (notesRail)    notesRail.hidden    = true;
         return;
     }
     const a = S.appInfo;
@@ -366,6 +368,12 @@ function renderSelectedApp() {
     `;
     if (actionsBlock) actionsBlock.hidden = false;
     if (inspectTabs)  inspectTabs.hidden  = false;
+    if (notesRail) {
+        notesRail.hidden = false;
+        notesSetupRail();           // idempotent: wires handlers once
+        notesLoad();                // load this package's notes
+        if (notesPreview) notesRenderPreview();
+    }
 }
 
 $('#app-search').addEventListener('input', debounce(loadApps, 200));
@@ -1670,35 +1678,121 @@ let notesDirty   = false;
 let notesPreview = false;
 let notesSaveTimer = null;
 
-function initNotes() {
-    once('notes', () => {
-        const ed = $('#notes-editor');
+let notesRailWired = false;
+function notesSetupRail() {
+    if (notesRailWired) return;
+    notesRailWired = true;
 
-        ed.addEventListener('input', () => {
-            notesDirty = true;
-            $('#notes-status').textContent = 'unsaved…';
-            // Debounced autosave 1.2s after typing stops
-            if (notesSaveTimer) clearTimeout(notesSaveTimer);
-            notesSaveTimer = setTimeout(() => notesSave(true), 1200);
-        });
-
-        // Ctrl/Cmd+S to save
-        ed.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                notesSave(false);
-            }
-        });
-
-        $('#notes-save').addEventListener('click', () => notesSave(false));
-        $('#notes-clear').addEventListener('click', notesClear);
-        $('#notes-preview-toggle').addEventListener('click', notesTogglePreview);
+    const ed = $('#notes-editor');
+    ed.addEventListener('input', () => {
+        notesDirty = true;
+        $('#notes-status').textContent = 'unsaved…';
+        if (notesSaveTimer) clearTimeout(notesSaveTimer);
+        notesSaveTimer = setTimeout(() => notesSave(true), 1200);
+    });
+    ed.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            notesSave(false);
+        }
     });
 
-    notesLoad();
+    $('#notes-save').addEventListener('click', () => notesSave(false));
+    $('#notes-clear').addEventListener('click', notesClear);
+    $('#notes-preview-toggle').addEventListener('click', notesTogglePreview);
+    $('#notes-download').addEventListener('click', notesDownload);
+
+    // Collapse / expand the rail
+    $('#notes-rail-handle').addEventListener('click', notesToggleRail);
+
+    // Drag-to-resize the rail width
+    notesSetupResizer();
+
+    // Alt+N toggles the rail from anywhere
+    document.addEventListener('keydown', e => {
+        if (e.altKey && e.key.toLowerCase() === 'n') {
+            e.preventDefault();
+            notesToggleRail();
+        }
+    });
 }
 
-function refreshNotes() { notesLoad(); }
+// Remembered expanded width (px). Survives collapse/expand and app switches
+// for the session. Clamped to [MIN, MAX] / viewport on apply.
+let notesRailWidth = 340;
+const NOTES_RAIL_MIN = 240;
+const NOTES_RAIL_MAX = 900;
+
+function notesApplyWidth(px) {
+    const max = Math.min(NOTES_RAIL_MAX, Math.round(window.innerWidth * 0.7));
+    notesRailWidth = Math.max(NOTES_RAIL_MIN, Math.min(px, max));
+    const rail = $('#notes-rail');
+    if (rail && !rail.classList.contains('collapsed')) {
+        rail.style.width = notesRailWidth + 'px';
+    }
+}
+
+function notesSetupResizer() {
+    const rail = $('#notes-rail');
+    const grip = $('#notes-rail-resizer');
+    if (!rail || !grip) return;
+
+    let startX = 0, startW = 0, dragging = false;
+
+    const onMove = (clientX) => {
+        if (!dragging) return;
+        // Rail is on the right edge, so dragging left (smaller clientX) widens it.
+        const delta = startX - clientX;
+        notesApplyWidth(startW + delta);
+    };
+    const onMouseMove = e => onMove(e.clientX);
+    const onTouchMove = e => { if (e.touches[0]) onMove(e.touches[0].clientX); };
+
+    const stop = () => {
+        if (!dragging) return;
+        dragging = false;
+        rail.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', stop);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', stop);
+    };
+
+    const start = (clientX) => {
+        if (rail.classList.contains('collapsed')) return;
+        dragging = true;
+        startX = clientX;
+        startW = rail.getBoundingClientRect().width;
+        rail.classList.add('resizing');
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', stop);
+        document.addEventListener('touchmove', onTouchMove, { passive: true });
+        document.addEventListener('touchend', stop);
+    };
+
+    grip.addEventListener('mousedown', e => { e.preventDefault(); start(e.clientX); });
+    grip.addEventListener('touchstart', e => { if (e.touches[0]) start(e.touches[0].clientX); }, { passive: true });
+
+    // Double-click the grip to reset to the default width.
+    grip.addEventListener('dblclick', () => notesApplyWidth(340));
+
+    // Keep within bounds if the window is resized smaller.
+    window.addEventListener('resize', () => notesApplyWidth(notesRailWidth));
+}
+
+function notesToggleRail() {
+    const rail = $('#notes-rail');
+    if (!rail || rail.hidden) return;
+    const collapsed = rail.classList.toggle('collapsed');
+    if (collapsed) {
+        // Let the CSS collapsed width (38px) take over.
+        rail.style.width = '';
+    } else {
+        // Restore the user's chosen width and focus for quick note-taking.
+        rail.style.width = notesRailWidth + 'px';
+        setTimeout(() => $('#notes-editor')?.focus(), 180);
+    }
+}
 
 async function notesLoad() {
     if (!S.pkg) return;
@@ -1745,6 +1839,23 @@ async function notesClear() {
         $('#notes-status').textContent = 'cleared';
         if (notesPreview) notesRenderPreview();
     } catch (e) { toast(e.message, 'err'); }
+}
+
+async function notesDownload() {
+    if (!S.pkg) return;
+    // Save any pending edits first so the downloaded file is current.
+    if (notesDirty) {
+        try { await notesSave(true); } catch (_) { /* fall through; download whatever's saved */ }
+    }
+    if (!$('#notes-editor').value.trim()) { toast('Nothing to download', 'err'); return; }
+    // Stream via a transient <a download>; the auth cookie ships with the
+    // request and Content-Disposition controls the filename.
+    const url = `/api/apps/${encodeURIComponent(S.pkg)}/notes/download`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${S.pkg}-notes.md`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Downloading notes…', 'ok');
 }
 
 function notesTogglePreview() {
@@ -1825,8 +1936,8 @@ function mdToHtml(src) {
 }
 
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, notes: initNotes };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, notes: refreshNotes };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

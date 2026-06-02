@@ -157,7 +157,6 @@
                 <a class="main-tab tab" data-tab="components" role="tab"><svg class="ic ic-sm"><use href="#i-blocks"/></svg>Components</a>
                 <a class="main-tab tab" data-tab="native"     role="tab"><svg class="ic ic-sm"><use href="#i-cpu"/></svg>Native</a>
                 <a class="main-tab tab" data-tab="code"     role="tab"><svg class="ic ic-sm"><use href="#i-file-text"/></svg>Code</a>
-                <a class="main-tab tab" data-tab="notes"    role="tab"><svg class="ic ic-sm"><use href="#i-notebook"/></svg>Notes</a>
             </nav>
 
             <div class="panels">
@@ -338,23 +337,39 @@
                     </div>
                 </section>
 
-                <!-- NOTES -->
-                <section class="panel hidden" data-tab="notes">
-                    <div class="toolbar">
-                        <button class="btn small" id="notes-save"><svg class="ic ic-sm"><use href="#i-download"/></svg>Save</button>
-                        <button class="btn ghost small" id="notes-preview-toggle">Preview</button>
-                        <button class="btn ghost small danger" id="notes-clear"><svg class="ic ic-sm"><use href="#i-trash"/></svg>Clear</button>
-                        <span class="muted small" id="notes-status"></span>
-                    </div>
-                    <div class="notes-wrap grow-y">
-                        <textarea id="notes-editor" class="notes-editor"
-                            placeholder="# Notes for this package&#10;&#10;Write findings, payloads, endpoints, credentials… in **Markdown**.&#10;Saved locally on the device, per package."></textarea>
-                        <div id="notes-preview" class="notes-preview md-body hidden"></div>
-                    </div>
-                </section>
-
             </div>
         </main>
+
+        <!-- ============================================================
+             RIGHT RAIL - per-package Markdown notes.
+             Persistent alongside whatever inspection tab is open, so the
+             pentester can take notes without losing their place. Visible
+             only when an app is selected; collapsible via the handle.
+             ============================================================ -->
+        <aside class="notes-rail collapsed" id="notes-rail" hidden>
+            <div class="notes-rail-resizer" id="notes-rail-resizer" title="Drag to resize" role="separator" aria-orientation="vertical"></div>
+            <button class="notes-rail-handle" id="notes-rail-handle" title="Toggle notes (Alt+N)" aria-label="Toggle notes panel">
+                <svg class="ic ic-sm"><use href="#i-notebook"/></svg>
+                <span class="notes-rail-handle-label">Notes</span>
+            </button>
+            <div class="notes-rail-body">
+                <div class="notes-rail-head">
+                    <span class="notes-rail-title"><svg class="ic ic-sm"><use href="#i-notebook"/></svg> Notes</span>
+                    <span class="muted small" id="notes-status"></span>
+                </div>
+                <div class="toolbar notes-rail-toolbar">
+                    <button class="btn small" id="notes-save"><svg class="ic ic-sm"><use href="#i-download"/></svg>Save</button>
+                    <button class="btn ghost small" id="notes-preview-toggle">Preview</button>
+                    <button class="btn ghost small" id="notes-download" title="Download notes as a .md file"><svg class="ic ic-sm"><use href="#i-download"/></svg></button>
+                    <button class="btn ghost small danger" id="notes-clear" title="Delete all notes for this app"><svg class="ic ic-sm"><use href="#i-trash"/></svg></button>
+                </div>
+                <div class="notes-wrap grow-y">
+                    <textarea id="notes-editor" class="notes-editor"
+                        placeholder="# Notes for this package&#10;&#10;Write findings, payloads, endpoints, credentials… in **Markdown**.&#10;Saved locally on the device, per package."></textarea>
+                    <div id="notes-preview" class="notes-preview md-body hidden"></div>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <div class="toast-container" id="toast" aria-live="polite"></div>
