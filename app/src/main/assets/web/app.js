@@ -935,14 +935,160 @@ function renderComponentsFiltered() {
         return `
             <div class="component-group">
                 <h3>${title} <span class="count">${items.length}</span></h3>
-                ${items.map(c => `
-                    <div class="component-row ${c.exported ? 'exported' : ''}">
-                        <div class="component-name">${fmt.esc(c.name)}${c.exported ? '<span class="tg danger">exported</span>' : ''}</div>
-                        ${c.intentFilters && c.intentFilters.length ? `<div class="component-filters">${c.intentFilters.map(f => fmt.esc(f)).join('<br>')}</div>` : ''}
-                    </div>
-                `).join('') || '<div class="empty small">no matches</div>'}
+                ${items.map((c, gi) => renderComponentRow(c, d.packageName)).join('') || '<div class="empty small">no matches</div>'}
             </div>`;
     }).join('') || `<div class="empty">No components match the current filters.</div>`;
+
+    wireComponentActions(d.packageName);
+}
+
+/**
+ * Render a single component row with an expandable adb-command builder.
+ * Exported components get a dropdown of pre-forged `am`/`content` commands
+ * derived from their intent-filters (actions, categories, deeplink data).
+ */
+function renderComponentRow(c, pkg) {
+    const cmds = buildAdbCommands(c, pkg);
+    const hasCmds = cmds.length > 0;
+    // Unique id for toggling the command panel
+    const rid = 'cmp_' + Math.random().toString(36).slice(2, 9);
+    const filterSummary = (c.filters || []).flatMap(f => [
+        ...f.actions.map(a => 'action: ' + a.replace('android.intent.action.', '')),
+        ...f.data.filter(dd => dd.scheme).map(dd => `data: ${dd.scheme}://${dd.host || ''}${dd.path || dd.pathPrefix || ''}`)
+    ]);
+
+    return `
+        <div class="component-row ${c.exported ? 'exported' : ''}">
+            <div class="component-head" ${hasCmds ? `data-toggle="${rid}" role="button" tabindex="0"` : ''}>
+                <span class="component-name">${fmt.esc(c.name)}</span>
+                ${c.exported ? '<span class="tg danger">exported</span>' : '<span class="tg">private</span>'}
+                ${c.authority ? `<span class="tg cyan">${fmt.esc(c.authority)}</span>` : ''}
+                ${hasCmds ? `<span class="cmp-caret" aria-hidden="true">▸</span>` : ''}
+            </div>
+            ${filterSummary.length ? `<div class="component-filters">${filterSummary.map(fmt.esc).join(' · ')}</div>` : ''}
+            ${hasCmds ? `
+                <div class="cmp-cmds hidden" id="${rid}">
+                    ${cmds.map((cmd, i) => `
+                        <div class="cmp-cmd">
+                            <code class="cmp-cmd-text" id="${rid}_${i}">${fmt.esc(cmd.display)}</code>
+                            <div class="cmp-cmd-actions">
+                                <button class="btn ghost small cmp-copy" data-copy="${rid}_${i}" title="Copy adb command">copy</button>
+                                <button class="btn small cmp-run" data-run="${rid}_${i}" data-shell="${fmt.esc(cmd.shell)}" title="Run on device via su">▶ Launch</button>
+                            </div>
+                            <div class="cmp-label muted small">${fmt.esc(cmd.label)}</div>
+                        </div>
+                    `).join('')}
+                </div>` : ''}
+        </div>`;
+}
+
+/**
+ * Build a list of pre-forged adb commands for a component, based on its type
+ * and intent-filters. Each entry has:
+ *   display — full `adb shell …` form (what the pentester copies)
+ *   shell   — the on-device form (no `adb shell` prefix) run via /api/live/exec
+ *   label   — human description
+ */
+function buildAdbCommands(c, pkg) {
+    const out = [];
+    // PackageManager returns fully-qualified component names already
+    // (e.g. com.example.MainActivity). am accepts pkg/fully.qualified.Name,
+    // and the short form pkg/.Name only when the class sits directly under
+    // the package. Using the FQ name is always safe.
+    const target = `${pkg}/${c.name}`;
+    const add = (shell, label) => out.push({ shell, display: 'adb shell ' + shell, label });
+
+    if (c.type === 'activity') {
+        add(`am start -n ${target}`, 'Launch activity directly (component name)');
+        // Per intent-filter: actions, categories, deeplinks
+        (c.filters || []).forEach(f => {
+            f.actions.filter(a => a !== 'android.intent.action.MAIN').forEach(action => {
+                const cats = f.categories.filter(x => x !== 'android.intent.category.LAUNCHER')
+                    .map(x => `-c ${x}`).join(' ');
+                add(`am start -n ${target} -a ${action}${cats ? ' ' + cats : ''}`,
+                    `Launch with action ${action.replace('android.intent.action.', '')}`);
+            });
+            // Deeplinks (VIEW + data)
+            f.data.filter(dd => dd.scheme).forEach(dd => {
+                const host = dd.host || 'HOST';
+                const path = dd.path || dd.pathPrefix || dd.pathPattern || '';
+                const uri = `${dd.scheme}://${host}${path}`;
+                add(`am start -a android.intent.action.VIEW -d "${uri}"`,
+                    `Open deeplink ${dd.scheme}://`);
+            });
+        });
+        add(`am start -n ${target} --es KEY VALUE --ei INT 0 --ez BOOL true`,
+            'Launch with example extras (edit before running)');
+
+    } else if (c.type === 'service') {
+        add(`am startservice -n ${target}`, 'Start service');
+        add(`am start-foreground-service -n ${target}`, 'Start as foreground service');
+        (c.filters || []).forEach(f => f.actions.forEach(action => {
+            add(`am startservice -n ${target} -a ${action}`,
+                `Start with action ${action.replace('android.intent.action.', '')}`);
+        }));
+
+    } else if (c.type === 'receiver') {
+        (c.filters || []).forEach(f => f.actions.forEach(action => {
+            add(`am broadcast -n ${target} -a ${action}`,
+                `Broadcast action ${action.replace('android.intent.action.', '')}`);
+        }));
+        add(`am broadcast -n ${target}`, 'Broadcast to receiver directly');
+        add(`am broadcast -n ${target} --es KEY VALUE`, 'Broadcast with example extra (edit before running)');
+
+    } else if (c.type === 'provider' && c.authority) {
+        add(`content query --uri content://${c.authority}/`, 'Query provider root');
+        add(`content query --uri content://${c.authority}/PATH`, 'Query a path (edit PATH)');
+        add(`content read --uri content://${c.authority}/PATH`, 'Read data from a path (edit PATH)');
+        add(`content insert --uri content://${c.authority}/PATH --bind col:s:value`, 'Insert a row (edit PATH/col)');
+    }
+    return out;
+}
+
+function wireComponentActions(pkg) {
+    // Expand/collapse command panels
+    $$('.component-head[data-toggle]').forEach(head => {
+        const fire = () => {
+            const panel = document.getElementById(head.dataset.toggle);
+            if (!panel) return;
+            const open = panel.classList.toggle('hidden');
+            const caret = head.querySelector('.cmp-caret');
+            if (caret) caret.textContent = open ? '▸' : '▾';
+        };
+        head.onclick = fire;
+        head.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } };
+    });
+    // Copy buttons
+    $$('.cmp-copy').forEach(b => b.onclick = () => {
+        const txt = document.getElementById(b.dataset.copy)?.textContent || '';
+        navigator.clipboard?.writeText(txt).then(
+            () => toast('Command copied', 'ok'),
+            () => toast('Copy failed', 'err')
+        );
+    });
+    // Launch buttons — run the on-device (shell) form via /api/live/exec
+    $$('.cmp-run').forEach(b => b.onclick = async () => {
+        const shell = b.dataset.shell;
+        if (!shell) return;
+        if (!confirm(`Run on device?\n\n${shell}`)) return;
+        b.disabled = true;
+        const orig = b.textContent;
+        b.textContent = '…';
+        try {
+            const r = await api.post('/api/live/exec', { command: shell });
+            const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+            if (r.code === 0) {
+                toast('Launched (exit 0)' + (out ? ': ' + out.slice(0, 120) : ''), 'ok');
+            } else {
+                toast(`exit ${r.code}: ${out.slice(0, 160) || 'no output'}`, 'err');
+            }
+        } catch (e) {
+            toast(e.message, 'err');
+        } finally {
+            b.disabled = false;
+            b.textContent = orig;
+        }
+    });
 }
 function initComponents() {
     once('components', () => {

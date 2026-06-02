@@ -1155,3 +1155,30 @@ td.num  { color: var(--cyan); text-align: right; }
 .md-body hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
 .btn.danger { color: var(--red); border-color: rgba(244,63,94,0.35); }
 .btn.danger:hover { background: rgba(244,63,94,0.08); }
+
+/* ---- Components: adb command builder ---- */
+.component-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 2px 0;
+}
+.component-head[data-toggle] { cursor: pointer; }
+.component-head[data-toggle]:hover .component-name { color: var(--accent); }
+.cmp-caret { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+
+.cmp-cmds {
+    margin: 8px 0 6px;
+    border-left: 2px solid var(--line);
+    padding-left: 12px;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.cmp-cmds.hidden { display: none; }
+
+.cmp-cmd { display: flex; flex-direction: column; gap: 4px; }
+.cmp-cmd-text {
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+    background: var(--elevated); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 7px 10px; color: var(--text); overflow-x: auto; white-space: pre;
+    display: block;
+}
+.cmp-cmd-actions { display: flex; gap: 6px; align-items: center; }
+.cmp-label { margin-top: -1px; }
