@@ -4,6 +4,7 @@ import android.content.Context
 import com.androidspect.root.ComponentInspector
 import com.androidspect.root.ManifestDecoder
 import com.androidspect.root.NativeLibScanner
+import com.androidspect.root.ExtrasExtractor
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -20,6 +21,7 @@ fun Routing.manifestRoutes(context: Context) {
     val decoder = ManifestDecoder(context)
     val inspector = ComponentInspector(context)
     val nativeScanner = NativeLibScanner(context)
+    val extrasExtractor = ExtrasExtractor(context)
 
     route("/api/apps/{pkg}") {
 
@@ -33,6 +35,18 @@ fun Routing.manifestRoutes(context: Context) {
         get("/components") {
             val pkg = call.parameters["pkg"].orEmpty()
             call.respond(inspector.list(pkg))
+        }
+
+        /**
+         * Static-scan a component's DEX for the Intent extras it reads.
+         * GET /api/apps/{pkg}/components/extras?class=<fully.qualified.Component>
+         * → { extras: [ { name, type }, … ] }
+         */
+        get("/components/extras") {
+            val pkg = call.parameters["pkg"].orEmpty()
+            val cls = call.request.queryParameters["class"]
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "class required"))
+            call.respond(mapOf("extras" to extrasExtractor.extract(pkg, cls)))
         }
 
         get("/native") {

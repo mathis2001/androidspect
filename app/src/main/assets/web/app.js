@@ -965,6 +965,10 @@ function renderComponentRow(c, pkg) {
         ...f.data.filter(dd => dd.scheme).map(dd => `data: ${dd.scheme}://${dd.host || ''}${dd.path || dd.pathPrefix || ''}`)
     ]);
 
+    // The Extras builder applies to components launched via `am` (activities,
+    // services, receivers). Providers use content URIs, not extras.
+    const supportsExtras = c.type === 'activity' || c.type === 'service' || c.type === 'receiver';
+
     return `
         <div class="component-row ${c.exported ? 'exported' : ''}">
             <div class="component-head" ${hasCmds ? `data-toggle="${rid}" role="button" tabindex="0"` : ''}>
@@ -986,6 +990,15 @@ function renderComponentRow(c, pkg) {
                             <div class="cmp-label muted small">${fmt.esc(cmd.label)}</div>
                         </div>
                     `).join('')}
+                    ${supportsExtras ? `
+                        <div class="cmp-extras" data-rid="${rid}"
+                             data-type="${c.type}" data-target="${fmt.esc(pkg + '/' + c.name)}"
+                             data-class="${fmt.esc(c.name)}">
+                            <button class="btn ghost small cmp-extras-load" title="Scan the component's code for the Intent extras it reads">
+                                <svg class="ic ic-sm"><use href="#i-search"/></svg> Build command with extras
+                            </button>
+                            <div class="cmp-extras-body hidden"></div>
+                        </div>` : ''}
                 </div>` : ''}
         </div>`;
 }
@@ -1025,8 +1038,6 @@ function buildAdbCommands(c, pkg) {
                     `Open deeplink ${dd.scheme}://`);
             });
         });
-        add(`am start -n ${target} --es KEY VALUE --ei INT 0 --ez BOOL true`,
-            'Launch with example extras (edit before running)');
 
     } else if (c.type === 'service') {
         add(`am startservice -n ${target}`, 'Start service');
@@ -1042,7 +1053,6 @@ function buildAdbCommands(c, pkg) {
                 `Broadcast action ${action.replace('android.intent.action.', '')}`);
         }));
         add(`am broadcast -n ${target}`, 'Broadcast to receiver directly');
-        add(`am broadcast -n ${target} --es KEY VALUE`, 'Broadcast with example extra (edit before running)');
 
     } else if (c.type === 'provider' && c.authority) {
         add(`content query --uri content://${c.authority}/`, 'Query provider root');
@@ -1097,6 +1107,135 @@ function wireComponentActions(pkg) {
             b.textContent = orig;
         }
     });
+
+    // Extras builder — scan the component's DEX for extras, render inputs.
+    $$('.cmp-extras').forEach(box => {
+        const loadBtn = box.querySelector('.cmp-extras-load');
+        const body    = box.querySelector('.cmp-extras-body');
+        loadBtn.onclick = async () => {
+            loadBtn.disabled = true;
+            const orig = loadBtn.innerHTML;
+            loadBtn.innerHTML = 'Scanning code…';
+            try {
+                const cls = box.dataset.class;
+                const r = await api.get(
+                    `/api/apps/${encodeURIComponent(pkg)}/components/extras?class=${encodeURIComponent(cls)}`
+                );
+                renderExtrasBuilder(box, body, r.extras || []);
+                body.classList.remove('hidden');
+                loadBtn.style.display = 'none';
+            } catch (e) {
+                toast(e.message, 'err');
+                loadBtn.disabled = false;
+                loadBtn.innerHTML = orig;
+            }
+        };
+    });
+}
+
+// adb `am` extra flags per type token
+const EXTRA_FLAG = { s: '--es', i: '--ei', l: '--el', z: '--ez', f: '--ef', d: '--ef' };
+const EXTRA_TYPE_LABEL = { s: 'string', i: 'int', l: 'long', z: 'bool', f: 'float', d: 'float' };
+
+function renderExtrasBuilder(box, body, extras) {
+    const type   = box.dataset.type;       // activity | service | receiver
+    const target = box.dataset.target;     // pkg/Component
+    const verb   = type === 'service' ? 'startservice'
+                 : type === 'receiver' ? 'broadcast'
+                 : 'start';
+
+    if (!extras.length) {
+        body.innerHTML = `<div class="muted small">No literal extras found in this component's code. It may read extras with dynamic keys, or none at all. You can still add custom extras manually.</div>
+            <div class="cmp-extras-rows"></div>
+            ${extrasBuilderControls()}`;
+    } else {
+        body.innerHTML = `
+            <div class="muted small">${extras.length} extra${extras.length>1?'s':''} found in code — fill values to forge the command:</div>
+            <div class="cmp-extras-rows">
+                ${extras.map(e => extraRow(e.name, e.type)).join('')}
+            </div>
+            ${extrasBuilderControls()}`;
+    }
+
+    const rowsWrap = body.querySelector('.cmp-extras-rows');
+    const cmdOut   = body.querySelector('.cmp-extras-cmd');
+    const enabledOf = () => Array.from(rowsWrap.querySelectorAll('.cmp-extra-row'));
+
+    const rebuild = () => {
+        const parts = [`am ${verb} -n ${target}`];
+        enabledOf().forEach(row => {
+            if (!row.querySelector('.cmp-extra-on').checked) return;
+            const name = row.querySelector('.cmp-extra-name').value.trim();
+            const t    = row.querySelector('.cmp-extra-type').value;
+            let val    = row.querySelector('.cmp-extra-val').value;
+            if (!name) return;
+            if (t === 'z') val = (val === 'true' || val === '1') ? 'true' : 'false';
+            // Quote string values that contain spaces
+            const needsQuote = t === 's' && /\s/.test(val);
+            const v = needsQuote ? `"${val.replace(/"/g, '\\"')}"` : val;
+            parts.push(`${EXTRA_FLAG[t]} ${name} ${v}`);
+        });
+        cmdOut.textContent = 'adb shell ' + parts.join(' ');
+        cmdOut.dataset.shell = parts.join(' ');
+    };
+
+    // Wire inputs
+    body.addEventListener('input', rebuild);
+    body.addEventListener('change', rebuild);
+
+    // Add-custom-extra button
+    body.querySelector('.cmp-extra-add').onclick = () => {
+        rowsWrap.insertAdjacentHTML('beforeend', extraRow('', 's'));
+        rebuild();
+    };
+    // Remove-row (delegated)
+    rowsWrap.onclick = (e) => {
+        const rm = e.target.closest('.cmp-extra-rm');
+        if (rm) { rm.closest('.cmp-extra-row').remove(); rebuild(); }
+    };
+    // Copy / Launch the built command
+    body.querySelector('.cmp-extras-copy').onclick = () => {
+        navigator.clipboard?.writeText(cmdOut.textContent).then(
+            () => toast('Command copied', 'ok'), () => toast('Copy failed', 'err'));
+    };
+    body.querySelector('.cmp-extras-run').onclick = async () => {
+        const shell = cmdOut.dataset.shell;
+        if (!shell) return;
+        if (!confirm(`Run on device?\n\n${shell}`)) return;
+        try {
+            const r = await api.post('/api/live/exec', { command: shell });
+            const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+            toast(r.code === 0 ? ('Launched (exit 0)' + (out ? ': ' + out.slice(0,120) : ''))
+                               : `exit ${r.code}: ${out.slice(0,160) || 'no output'}`,
+                  r.code === 0 ? 'ok' : 'err');
+        } catch (e) { toast(e.message, 'err'); }
+    };
+
+    rebuild();
+}
+
+function extraRow(name, type) {
+    const opts = Object.entries(EXTRA_TYPE_LABEL)
+        .filter(([k]) => k !== 'd') // collapse float/double into one
+        .map(([k, label]) => `<option value="${k}" ${k===type?'selected':''}>${label}</option>`).join('');
+    return `
+        <div class="cmp-extra-row">
+            <input type="checkbox" class="cmp-extra-on" checked title="Include this extra">
+            <input class="input mono small cmp-extra-name" value="${fmt.esc(name)}" placeholder="key">
+            <select class="input small cmp-extra-type">${opts}</select>
+            <input class="input mono small cmp-extra-val" placeholder="value">
+            <button class="btn ghost small cmp-extra-rm" title="Remove">✕</button>
+        </div>`;
+}
+
+function extrasBuilderControls() {
+    return `
+        <button class="btn ghost small cmp-extra-add">+ Add extra</button>
+        <code class="cmp-cmd-text cmp-extras-cmd" style="margin-top:8px"></code>
+        <div class="cmp-cmd-actions">
+            <button class="btn ghost small cmp-extras-copy">copy</button>
+            <button class="btn small cmp-extras-run">▶ Launch</button>
+        </div>`;
 }
 function initComponents() {
     once('components', () => {

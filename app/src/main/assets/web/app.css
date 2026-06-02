@@ -1263,3 +1263,23 @@ td.num  { color: var(--cyan); text-align: right; }
 }
 .cmp-cmd-actions { display: flex; gap: 6px; align-items: center; }
 .cmp-label { margin-top: -1px; }
+
+/* ---- Components: extras builder ---- */
+.cmp-extras {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+}
+.cmp-extras-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.cmp-extras-body.hidden { display: none; }
+.cmp-extras-rows { display: flex; flex-direction: column; gap: 6px; }
+.cmp-extra-row {
+    display: flex; align-items: center; gap: 6px;
+}
+.cmp-extra-row .cmp-extra-on { flex-shrink: 0; }
+.cmp-extra-row .cmp-extra-name { flex: 1 1 40%; min-width: 0; }
+.cmp-extra-row .cmp-extra-type { flex: 0 0 auto; width: 72px; }
+.cmp-extra-row .cmp-extra-val  { flex: 1 1 40%; min-width: 0; }
+.cmp-extra-rm { flex-shrink: 0; color: var(--muted); }
+.cmp-extra-rm:hover { color: var(--red); }
+.cmp-extras-cmd { display: block; }
