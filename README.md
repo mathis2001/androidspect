@@ -113,7 +113,7 @@ Browser login.
 
 Target picker and Files tab on the selected app.
 
-![Files browser](screenshots/03-files.png)
+![Files browser](screenshots/03-files.PNG)
 
 Decoded manifest with summary chips on top.
 
@@ -121,11 +121,21 @@ Decoded manifest with summary chips on top.
 
 Components inspector with exported badge, filter and exported-only toggle.
 
-![Components inspector](screenshots/05-components.png)
+![Components inspector](screenshots/05-components.PNG)
+
+Dynamic ADB commands forging
+
+![ADB commands1](screenshots/10-adb-commands.PNG)
+![ADB commands2](screenshots/11-adb-commands.PNG)
 
 Native libraries per ABI with size and stripped flag, one-click `.so` download.
 
 ![Native libraries](screenshots/06-native.png)
+
+Markdown notes feature
+
+![Notes1](screenshots/12-notes.PNG)
+![Notes2](screenshots/13-notes.PNG)
 
 Process list from `/proc`.
 
