@@ -219,9 +219,17 @@ a:hover { color: var(--accent); }
 .app-row .name {
     font-size: 12.5px; font-weight: 500; color: var(--text);
     display: flex; align-items: center; gap: 6px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    /* Allow tags to wrap onto a second line instead of truncating the label */
+    flex-wrap: wrap;
 }
-.app-row .name .lbl { overflow: hidden; text-overflow: ellipsis; }
+.app-row .name .lbl {
+    /* Show the full app name; wrap long names rather than cutting them off.
+       Sizing to content (not flex-grow) lets tags sit inline beside short
+       names and wrap to the next line only when the row runs out of width. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
 .app-row .pkg  {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px; color: var(--muted);

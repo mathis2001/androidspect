@@ -301,6 +301,9 @@ function renderAppList(apps) {
                 ${isRunning ? '<span class="run-dot" title="Process is running"></span>' : '<span class="run-dot off" title="Not running"></span>'}
                 <span class="lbl">${fmt.esc(a.label)}</span>
                 ${a.debuggable ? '<span class="tg warn">debug</span>' : ''}
+                ${a.allowBackup ? '<span class="tg warn">backup</span>' : ''}
+                ${a.cleartext ? '<span class="tg warn">cleartext</span>' : ''}
+                <span class="tg">minSdk ${fmt.esc(a.minSdk)}</span>
             </div>
             <div class="pkg">${fmt.esc(a.packageName)}</div>
         </div>`;
@@ -1199,16 +1202,13 @@ function initShell() {
 function refreshShell() {}
 
 // ============== CODE tab ==============
-// State lives entirely in these locals — no S.* pollution needed because
-// job data is fetched from the server and re-loaded on every initCode().
-let codeJobId    = null;   // active decompiler job id
-let codeOpenTabs = [];     // [{path, label, lang, content}]
+let codeJobId    = null;
+let codeOpenTabs = [];
 let codeTabIdx   = -1;
 let codePollTimer= null;
 
 function initCode() {
     once('code', () => {
-        // Decompile button
         $('#code-decompile').addEventListener('click', async () => {
             if (!S.pkg) { toast('Pick an app first', 'err'); return; }
             try {
@@ -1231,24 +1231,18 @@ function initCode() {
         });
 
         $('#code-jobs-refresh').addEventListener('click', codeRefreshJobList);
-
         $('#code-search-btn').addEventListener('click', codeRunSearch);
         $('#code-search-input').addEventListener('keydown', e => { if (e.key === 'Enter') codeRunSearch(); });
-
         $('#code-zip-btn').addEventListener('click', () => {
             if (codeJobId) window.location.href = `/api/decompiler/jobs/${codeJobId}/zip`;
         });
     });
 
-    // On every app switch: refresh job list (shows prior jobs for this pkg)
     codeRefreshJobList();
 }
 
-function refreshCode() {
-    codeRefreshJobList();
-}
+function refreshCode() { codeRefreshJobList(); }
 
-// ── Job list ──────────────────────────────────────────────────────────────────
 async function codeRefreshJobList() {
     try {
         const jobs = await api.get('/api/decompiler/jobs');
@@ -1266,7 +1260,6 @@ async function codeRefreshJobList() {
         list.querySelectorAll('.code-job-item').forEach(row => {
             row.addEventListener('click', () => codeSelectJob(row.dataset.id));
         });
-        // Auto-resume poll if the active job is still running
         if (codeJobId) {
             const active = jobs.find(j => j.id === codeJobId);
             if (active && (active.status === 'RUNNING' || active.status === 'PENDING')) {
@@ -1277,7 +1270,7 @@ async function codeRefreshJobList() {
                 $('#code-zip-btn').disabled = false;
             }
         }
-    } catch (_) { /* server may not have route yet */ }
+    } catch (_) {}
 }
 
 async function codeSelectJob(id) {
@@ -1288,7 +1281,6 @@ async function codeSelectJob(id) {
     renderCodeTabs();
     $('#code-zip-btn').disabled = true;
     await codeRefreshJobList();
-
     try {
         const job = await api.get(`/api/decompiler/jobs/${id}`);
         codeUpdateProgress(job.progress, job.message);
@@ -1305,18 +1297,15 @@ async function codeSelectJob(id) {
     } catch (e) { toast(e.message, 'err'); }
 }
 
-// ── Polling ───────────────────────────────────────────────────────────────────
 function codeStartPoll() {
     codeStopPoll();
     $('#code-progress-wrap').hidden = false;
     codePollTimer = setInterval(codePoll, 1600);
     codePoll();
 }
-
 function codeStopPoll() {
     if (codePollTimer) { clearInterval(codePollTimer); codePollTimer = null; }
 }
-
 async function codePoll() {
     if (!codeJobId) return;
     try {
@@ -1337,13 +1326,11 @@ async function codePoll() {
         }
     } catch (_) {}
 }
-
 function codeUpdateProgress(pct, msg) {
     $('#code-progress-fill').style.width = pct + '%';
     $('#code-progress-msg').textContent  = msg || '';
 }
 
-// ── File tree ─────────────────────────────────────────────────────────────────
 async function codeLoadTree(jobId) {
     $('#code-tree').innerHTML = '<div class="empty small">Loading…</div>';
     try {
@@ -1360,7 +1347,6 @@ function codeRenderNode(node, container, depth, jobId) {
     const row  = document.createElement('div');
     row.className = 'code-tree-row';
     row.style.paddingLeft = (8 + depth * 13) + 'px';
-
     const icon = document.createElement('span');
     icon.className = 'ctr-icon';
     const name = document.createElement('span');
@@ -1377,7 +1363,7 @@ function codeRenderNode(node, container, depth, jobId) {
         const children = document.createElement('div');
         children.className = 'code-tree-children';
         wrap.appendChild(children);
-        const autoExpand = depth === 0 || ['sources','resources','res'].includes(node.name);
+        const autoExpand = depth === 0 || ['sources','resources','res','classes'].includes(node.name);
         if (autoExpand) { children.classList.add('open'); icon.style.transform = 'rotate(90deg)'; }
         (node.children || []).forEach(c => codeRenderNode(c, children, depth + 1, jobId));
         row.addEventListener('click', () => {
@@ -1394,15 +1380,11 @@ function codeRenderNode(node, container, depth, jobId) {
     }
 }
 
-// ── File viewer ───────────────────────────────────────────────────────────────
 async function codeOpenFile(jobId, path, name, language) {
     const existing = codeOpenTabs.findIndex(t => t.path === path);
     if (existing >= 0) { codeActivateTab(existing); return; }
-
-    // Show loading state while fetching
     $('#code-viewer').innerHTML = '<div class="empty"><span class="muted">Loading…</span></div>';
     $('#code-search-results').classList.add('hidden');
-
     try {
         const data = await api.get(`/api/decompiler/jobs/${jobId}/file?path=${encodeURIComponent(path)}`);
         codeOpenTabs.push({ path, label: name, lang: data.language, content: data.content, jobId });
@@ -1417,26 +1399,20 @@ function codeActivateTab(idx) {
     renderCodeTabs();
     const tab = codeOpenTabs[idx];
     if (!tab) return;
-
-    // Breadcrumb
     const parts = tab.path.split('/');
     $('#code-crumb').innerHTML = parts.map((p, i) =>
         i < parts.length - 1
             ? `<span>${fmt.esc(p)}</span><span class="sep">/</span>`
             : `<span>${fmt.esc(p)}</span>`
     ).join('');
-
-    // Line numbers + highlighted code
     const lines = tab.content.split('\n');
     const gutter = lines.map((_, i) => `<div>${i + 1}</div>`).join('');
     let highlighted;
     try {
-        // highlight.js is loaded lazily by the <link>/<script> injected below
         highlighted = window.hljs
             ? hljs.highlight(tab.content, { language: tab.lang, ignoreIllegals: true }).value
-            : fmt.esc(tab.content);
-    } catch (_) { highlighted = fmt.esc(tab.content); }
-
+            : codeEsc(tab.content);
+    } catch (_) { highlighted = codeEsc(tab.content); }
     $('#code-search-results').classList.add('hidden');
     $('#code-viewer').innerHTML = `
         <div class="code-gutter-wrap">
@@ -1453,7 +1429,6 @@ function renderCodeTabs() {
             <span>${fmt.esc(t.label)}</span>
             <span class="code-tab-close" data-idx="${i}">×</span>
         </div>`).join('');
-
     $$('.code-tab', $('#code-tabs')).forEach(el => {
         el.addEventListener('click', e => {
             if (e.target.classList.contains('code-tab-close')) return;
@@ -1475,33 +1450,27 @@ function renderCodeTabs() {
     });
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
 async function codeRunSearch() {
     const q = $('#code-search-input').value.trim();
     if (!q) { $('#code-search-input').focus(); return; }
     if (!codeJobId) { toast('Start a decompile job first.', 'err'); return; }
-
     const sr = $('#code-search-results');
     sr.classList.remove('hidden');
     sr.innerHTML = '<div class="empty small muted">Searching…</div>';
     $('#code-viewer').style.display = 'none';
-
     try {
         const data = await api.get(`/api/decompiler/jobs/${codeJobId}/search?q=${encodeURIComponent(q)}`);
         if (!data.hits.length) {
             sr.innerHTML = `<div class="empty small muted">No results for <code>${fmt.esc(q)}</code></div>`;
             return;
         }
-        // Group by file
         const byFile = {};
         data.hits.forEach(h => (byFile[h.path] = byFile[h.path] || []).push(h));
-
         sr.innerHTML = `<div class="muted small" style="margin-bottom:8px">${data.total} result${data.total !== 1 ? 's' : ''} for <strong>${fmt.esc(q)}</strong></div>` +
             Object.entries(byFile).map(([fp, hits]) => `
                 <div class="code-sr-file" data-path="${fmt.esc(fp)}">${fmt.esc(fp)}</div>
-                ${hits.map(h => `<div class="code-sr-line"><span class="code-sr-lineno">${h.line}</span>${fmt.esc(h.text.trim())}</div>`).join('')}
+                ${hits.map(h => `<div class="code-sr-line"><span class="code-sr-lineno">${h.line}</span>${codeEsc(h.text.trim())}</div>`).join('')}
             `).join('');
-
         $$('.code-sr-file', sr).forEach(el => {
             el.addEventListener('click', () => {
                 sr.classList.add('hidden');
@@ -1515,20 +1484,20 @@ async function codeRunSearch() {
     }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
-const CODE_LANG_MAP = { java:'java', kt:'kotlin', kts:'kotlin', xml:'xml', json:'json', smali:'smali', gradle:'groovy', properties:'ini', pro:'ini', txt:'plaintext', html:'html', htm:'html', js:'javascript', ts:'typescript', py:'python', sh:'bash', yaml:'yaml', yml:'yaml', md:'markdown', cpp:'cpp', c:'c', h:'cpp' };
+function codeEsc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+const CODE_LANG_MAP = { smali:'smali', java:'java', kt:'kotlin', xml:'xml', json:'json', txt:'plaintext', md:'markdown' };
 function codeLangFromName(name) { return CODE_LANG_MAP[name.split('.').pop()?.toLowerCase()] || 'plaintext'; }
-
-const CODE_FILE_ICONS = { java:'☕', kotlin:'🎯', xml:'🗂', json:'📋', smali:'🔧', groovy:'🐘', html:'🌐', javascript:'🟨', typescript:'🟦', python:'🐍', bash:'💲', markdown:'📝', yaml:'⚙️', ini:'⚙️' };
+const CODE_FILE_ICONS = { smali:'🔧', java:'☕', kotlin:'🎯', xml:'🗂', json:'📋', markdown:'📝' };
 function codeFileIcon(lang) { return CODE_FILE_ICONS[lang] || '📄'; }
 
-// Lazy-load highlight.js once — only when the Code tab is first opened.
-// Uses github-dark theme which sits naturally on AndroidSpect's dark palette.
+// Lazy-load highlight.js on first Code-tab open.
 (function ensureHljs() {
     if (window.__hljsLoading || window.hljs) return;
     window.__hljsLoading = true;
     const link = document.createElement('link');
-    link.rel  = 'stylesheet';
+    link.rel = 'stylesheet';
     link.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
     document.head.appendChild(link);
     const s = document.createElement('script');

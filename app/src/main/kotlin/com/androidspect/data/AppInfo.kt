@@ -18,5 +18,7 @@ data class AppInfo(
     val system: Boolean,
     val permissions: List<String>,
     val firstInstallTime: Long,
-    val lastUpdateTime: Long
+    val lastUpdateTime: Long,
+    val allowBackup: Boolean,
+    val cleartext: Boolean
 )

@@ -57,6 +57,7 @@ class AppDataReader(private val context: Context) {
                 }
                 .map { pkg ->
                     val ai = pkg.applicationInfo
+                    val aiFlags = ai?.flags ?: 0
                     AppInfo(
                         packageName = pkg.packageName,
                         label = ai?.loadLabel(pm)?.toString() ?: pkg.packageName,
@@ -68,9 +69,19 @@ class AppDataReader(private val context: Context) {
                         sourceDir = ai?.sourceDir.orEmpty(),
                         dataDir = ai?.dataDir.orEmpty(),
                         nativeLibDir = ai?.nativeLibraryDir.orEmpty(),
-                        debuggable = ((ai?.flags ?: 0) and
+                        debuggable = (aiFlags and
                             android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
-                        system = ((ai?.flags ?: 0) and
+                        // android:allowBackup — defaults to true when unset, and
+                        // Android reflects that default in this flag.
+                        allowBackup = (aiFlags and
+                            android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP) != 0,
+                        // android:usesCleartextTraffic — manifest-level flag.
+                        // On API 24+ a Network Security Config can narrow the
+                        // effective value; this reflects the manifest flag, which
+                        // is the right granularity for a quick list badge.
+                        cleartext = (aiFlags and
+                            android.content.pm.ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC) != 0,
+                        system = (aiFlags and
                             android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0,
                         permissions = pkg.requestedPermissions?.toList().orEmpty(),
                         firstInstallTime = pkg.firstInstallTime,

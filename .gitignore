@@ -1,2 +1,35 @@
-!.kotlin
-!.gradle
+# Build outputs
+/build/
+app/build/
+**/build/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IDE — Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# Local config (never commit — contains machine-specific paths and secrets)
+local.properties
+keystore.properties
+
+# Android generated
+gen/
+out/
+
+# Dependency lock files (optional — remove these lines if you want to commit them)
+*.lockfile
+
+# OS cruft
+Thumbs.db
+.DS_Store
