@@ -61,6 +61,20 @@ const api = {
         if (!r.ok) throw await explainError(r);
         return r.json();
     },
+    async put(url, body, opts) {
+        const r = await fetchAuthed(url, Object.assign({
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined
+        }, opts || {}));
+        if (!r.ok) throw await explainError(r);
+        return r.json();
+    },
+    async del(url, opts) {
+        const r = await fetchAuthed(url, Object.assign({ method: 'DELETE' }, opts || {}));
+        if (!r.ok) throw await explainError(r);
+        return r.json();
+    },
     async blob(url, opts) {
         const r = await fetchAuthed(url, opts);
         if (!r.ok) throw await explainError(r);
@@ -322,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','notes'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -1505,9 +1519,168 @@ function codeFileIcon(lang) { return CODE_FILE_ICONS[lang] || '📄'; }
     document.head.appendChild(s);
 })();
 
+// ============== NOTES tab ==============
+let notesDirty   = false;
+let notesPreview = false;
+let notesSaveTimer = null;
+
+function initNotes() {
+    once('notes', () => {
+        const ed = $('#notes-editor');
+
+        ed.addEventListener('input', () => {
+            notesDirty = true;
+            $('#notes-status').textContent = 'unsaved…';
+            // Debounced autosave 1.2s after typing stops
+            if (notesSaveTimer) clearTimeout(notesSaveTimer);
+            notesSaveTimer = setTimeout(() => notesSave(true), 1200);
+        });
+
+        // Ctrl/Cmd+S to save
+        ed.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                notesSave(false);
+            }
+        });
+
+        $('#notes-save').addEventListener('click', () => notesSave(false));
+        $('#notes-clear').addEventListener('click', notesClear);
+        $('#notes-preview-toggle').addEventListener('click', notesTogglePreview);
+    });
+
+    notesLoad();
+}
+
+function refreshNotes() { notesLoad(); }
+
+async function notesLoad() {
+    if (!S.pkg) return;
+    const ed = $('#notes-editor');
+    ed.value = '';
+    $('#notes-status').textContent = 'loading…';
+    try {
+        const data = await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/notes`);
+        ed.value = data.markdown || '';
+        notesDirty = false;
+        $('#notes-status').textContent = data.updatedAt
+            ? `saved ${fmt.ago ? fmt.ago(data.updatedAt) : new Date(data.updatedAt).toLocaleString()}`
+            : 'no notes yet';
+        if (notesPreview) notesRenderPreview();
+    } catch (e) {
+        $('#notes-status').textContent = '';
+        toast(e.message, 'err');
+    }
+}
+
+async function notesSave(isAuto) {
+    if (!S.pkg) return;
+    if (notesSaveTimer) { clearTimeout(notesSaveTimer); notesSaveTimer = null; }
+    const markdown = $('#notes-editor').value;
+    $('#notes-status').textContent = 'saving…';
+    try {
+        const data = await api.put(`/api/apps/${encodeURIComponent(S.pkg)}/notes`, { markdown });
+        notesDirty = false;
+        $('#notes-status').textContent = data.updatedAt ? 'saved' : 'empty';
+        if (!isAuto) toast('Notes saved', 'ok');
+    } catch (e) {
+        $('#notes-status').textContent = 'save failed';
+        toast(e.message, 'err');
+    }
+}
+
+async function notesClear() {
+    if (!S.pkg) return;
+    if (!confirm(`Delete all notes for ${S.pkg}?`)) return;
+    try {
+        await api.del(`/api/apps/${encodeURIComponent(S.pkg)}/notes`);
+        $('#notes-editor').value = '';
+        notesDirty = false;
+        $('#notes-status').textContent = 'cleared';
+        if (notesPreview) notesRenderPreview();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+function notesTogglePreview() {
+    notesPreview = !notesPreview;
+    $('#notes-preview-toggle').textContent = notesPreview ? 'Edit' : 'Preview';
+    $('#notes-editor').classList.toggle('hidden', notesPreview);
+    $('#notes-preview').classList.toggle('hidden', !notesPreview);
+    if (notesPreview) notesRenderPreview();
+}
+
+function notesRenderPreview() {
+    $('#notes-preview').innerHTML = mdToHtml($('#notes-editor').value);
+}
+
+/**
+ * Tiny dependency-free Markdown → HTML renderer. Covers the subset useful
+ * for pentest notes: headings, bold/italic/code, fenced code blocks, links,
+ * blockquotes, hr, ordered/unordered lists. All text is HTML-escaped first
+ * so notes can never inject markup into the preview.
+ */
+function mdToHtml(src) {
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const lines = src.replace(/\r\n/g, '\n').split('\n');
+    let html = '', i = 0;
+    let inUl = false, inOl = false;
+    const closeLists = () => {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (inOl) { html += '</ol>'; inOl = false; }
+    };
+    const inline = t => esc(t)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    while (i < lines.length) {
+        const line = lines[i];
+
+        // Fenced code block
+        if (/^```/.test(line)) {
+            closeLists();
+            const buf = [];
+            i++;
+            while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+            i++; // skip closing fence
+            html += `<pre><code>${esc(buf.join('\n'))}</code></pre>`;
+            continue;
+        }
+        // Heading
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        if (h) { closeLists(); const lvl = h[1].length; html += `<h${lvl}>${inline(h[2])}</h${lvl}>`; i++; continue; }
+        // Horizontal rule
+        if (/^(\*\*\*|---|___)\s*$/.test(line)) { closeLists(); html += '<hr>'; i++; continue; }
+        // Blockquote
+        if (/^>\s?/.test(line)) { closeLists(); html += `<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`; i++; continue; }
+        // Unordered list
+        if (/^[-*+]\s+/.test(line)) {
+            if (inOl) { html += '</ol>'; inOl = false; }
+            if (!inUl) { html += '<ul>'; inUl = true; }
+            html += `<li>${inline(line.replace(/^[-*+]\s+/, ''))}</li>`; i++; continue;
+        }
+        // Ordered list
+        if (/^\d+\.\s+/.test(line)) {
+            if (inUl) { html += '</ul>'; inUl = false; }
+            if (!inOl) { html += '<ol>'; inOl = true; }
+            html += `<li>${inline(line.replace(/^\d+\.\s+/, ''))}</li>`; i++; continue;
+        }
+        // Blank line
+        if (/^\s*$/.test(line)) { closeLists(); i++; continue; }
+        // Paragraph
+        closeLists();
+        html += `<p>${inline(line)}</p>`;
+        i++;
+    }
+    closeLists();
+    return html;
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, notes: initNotes };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, notes: refreshNotes };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

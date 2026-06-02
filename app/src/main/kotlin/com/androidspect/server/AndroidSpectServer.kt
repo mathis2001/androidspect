@@ -5,14 +5,15 @@ import android.util.Log
 import com.androidspect.root.AppDataReader
 import com.androidspect.server.routes.appRoutes
 import com.androidspect.server.routes.assetRoutes
+import com.androidspect.server.routes.decompilerRoutes
 import com.androidspect.server.routes.fileRoutes
 import com.androidspect.server.routes.liveRoutes
 import com.androidspect.server.routes.manifestRoutes
+import com.androidspect.server.routes.notesRoutes
 import com.androidspect.server.routes.prefsRoutes
 import com.androidspect.server.routes.sqliteRoutes
 import com.androidspect.server.routes.systemRoutes
 import com.androidspect.server.ws.logcatWebSocket
-import com.androidspect.server.routes.decompilerRoutes
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -102,6 +103,7 @@ class AndroidSpectServer(
                 allowHeader(HttpHeaders.ContentType)
                 allowMethod(io.ktor.http.HttpMethod.Get)
                 allowMethod(io.ktor.http.HttpMethod.Post)
+                allowMethod(io.ktor.http.HttpMethod.Put)
                 allowMethod(io.ktor.http.HttpMethod.Delete)
             }
             // Simple password + session-cookie auth. Password is set from the
@@ -157,6 +159,7 @@ class AndroidSpectServer(
                 manifestRoutes(context)
                 liveRoutes(context)
                 decompilerRoutes(context)
+                notesRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()
             }

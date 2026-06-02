@@ -1093,3 +1093,65 @@ td.num  { color: var(--cyan); text-align: right; }
    app's monospace + colour token already defined in app.css */
 .code-viewer pre  { margin: 0; }
 .code-viewer code { font-size: 12px; line-height: 1.65; }
+
+/* ---- Notes tab ---- */
+.notes-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.notes-editor {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    outline: none;
+}
+.notes-editor:focus { border-color: var(--accent); }
+.notes-editor::placeholder { color: var(--muted); }
+
+.notes-preview {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    padding: 4px 18px 18px;
+}
+.notes-preview.hidden { display: none; }
+
+/* Minimal Markdown render styling, scoped to .md-body */
+.md-body { color: var(--text); font-size: 14px; line-height: 1.65; }
+.md-body h1, .md-body h2, .md-body h3 { font-weight: 600; line-height: 1.3; margin: 18px 0 8px; }
+.md-body h1 { font-size: 20px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.md-body h2 { font-size: 17px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.md-body h3 { font-size: 15px; }
+.md-body p  { margin: 8px 0; }
+.md-body ul, .md-body ol { margin: 8px 0; padding-left: 22px; }
+.md-body li { margin: 3px 0; }
+.md-body a { color: var(--accent); }
+.md-body code {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    background: var(--elevated); padding: 1px 5px; border-radius: 4px;
+}
+.md-body pre {
+    background: var(--elevated); border: 1px solid var(--line);
+    border-radius: var(--r-sm); padding: 12px 14px; overflow-x: auto; margin: 10px 0;
+}
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote {
+    border-left: 3px solid var(--line); margin: 10px 0; padding: 2px 14px;
+    color: var(--muted);
+}
+.md-body table { border-collapse: collapse; margin: 10px 0; }
+.md-body th, .md-body td { border: 1px solid var(--line); padding: 5px 10px; }
+.md-body hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+.btn.danger { color: var(--red); border-color: rgba(244,63,94,0.35); }
+.btn.danger:hover { background: rgba(244,63,94,0.08); }
