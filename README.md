@@ -117,7 +117,7 @@ Target picker and Files tab on the selected app.
 
 Decoded manifest with summary chips on top.
 
-![Manifest decoder](screenshots/04-manifest.png)
+![Manifest decoder](screenshots/04-manifest.PNG)
 
 Components inspector with exported badge, filter and exported-only toggle.
 
