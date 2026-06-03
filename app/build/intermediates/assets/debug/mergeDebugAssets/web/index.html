@@ -42,6 +42,7 @@
             <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></symbol>
             <symbol id="i-notebook" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M16 2v20"/></symbol>
             <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+            <symbol id="i-hard-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
         </defs>
     </svg>
 
@@ -133,6 +134,7 @@
                 <div class="sb-section">
                     <div class="sb-label">Act</div>
                     <a class="sb-link tab" data-tab="shell"      role="tab"><svg class="ic"><use href="#i-terminal"/></svg>Shell</a>
+                    <a class="sb-link tab" data-tab="devfiles"   role="tab"><svg class="ic"><use href="#i-hard-drive"/></svg>File Explorer</a>
                 </div>
             </nav>
         </aside>
@@ -300,6 +302,27 @@
                         <button class="btn ghost small" id="sh-clear">Clear</button>
                     </div>
                     <pre id="sh-out" class="logcat grow-y"></pre>
+                </section>
+
+                <!-- DEVICE FILE EXPLORER -->
+                <section class="panel hidden" data-tab="devfiles">
+                    <div class="toolbar">
+                        <button class="btn ghost small" id="df-up" title="Parent directory">↑ Up</button>
+                        <input class="input mono grow" id="df-path" placeholder="/sdcard" value="/">
+                        <button class="btn small" id="df-go">Go</button>
+                        <button class="btn ghost small" id="df-zip" title="Download this directory as ZIP"><svg class="ic ic-sm"><use href="#i-download"/></svg>ZIP</button>
+                    </div>
+                    <div class="df-quick">
+                        <button class="btn ghost small df-jump" data-path="/sdcard">/sdcard</button>
+                        <button class="btn ghost small df-jump" data-path="/data/data">/data/data</button>
+                        <button class="btn ghost small df-jump" data-path="/data/local/tmp">/data/local/tmp</button>
+                        <button class="btn ghost small df-jump" data-path="/system">/system</button>
+                        <button class="btn ghost small df-jump" data-path="/">/</button>
+                    </div>
+                    <div class="df-split">
+                        <div id="df-list" class="df-list grow-y"></div>
+                        <div id="df-viewer" class="df-viewer grow-y"><div class="empty">Select a file to preview.</div></div>
+                    </div>
                 </section>
 
                 <!-- CODE -->

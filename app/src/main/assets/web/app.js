@@ -2327,9 +2327,101 @@ async function dlLaunch(uri, btn) {
 function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
 
 
+// ============== DEVICE FILE EXPLORER tab ==============
+let dfPath = '/';
+
+function initDevfiles() {
+    once('devfiles', () => {
+        $('#df-go').addEventListener('click', () => dfLoad($('#df-path').value.trim() || '/'));
+        $('#df-path').addEventListener('keydown', e => { if (e.key === 'Enter') dfLoad($('#df-path').value.trim() || '/'); });
+        $('#df-up').addEventListener('click', () => { if (dfParent != null) dfLoad(dfParent); });
+        $('#df-zip').addEventListener('click', () => {
+            window.location.href = `/api/device/files/zip?path=${encodeURIComponent(dfPath)}`;
+        });
+        $('.df-quick')?.addEventListener('click', e => {
+            const b = e.target.closest('.df-jump'); if (b) dfLoad(b.dataset.path);
+        });
+        $('#df-list').addEventListener('click', e => {
+            const row = e.target.closest('.df-row'); if (!row) return;
+            if (row.dataset.dir === '1') dfLoad(row.dataset.path);
+            else dfOpenFile(row.dataset.path, row.dataset.name);
+        });
+    });
+    dfLoad(dfPath);
+}
+function refreshDevfiles() { /* keep current dir on tab re-entry */ }
+
+let dfParent = null;
+async function dfLoad(path) {
+    $('#df-list').innerHTML = '<div class="empty small">Loading…</div>';
+    try {
+        const d = await api.get(`/api/device/files?path=${encodeURIComponent(path)}`);
+        dfPath = d.path; dfParent = d.parent;
+        $('#df-path').value = d.path;
+        $('#df-up').disabled = d.parent == null;
+        if (!d.entries.length) {
+            $('#df-list').innerHTML = '<div class="empty small">empty directory</div>';
+            return;
+        }
+        $('#df-list').innerHTML = d.entries.map(it => `
+            <div class="df-row" data-path="${fmt.esc(it.path)}" data-name="${fmt.esc(it.name)}" data-dir="${it.isDir ? '1' : '0'}">
+                <span class="df-icon">${it.isDir ? '📁' : dfFileIcon(it.name)}</span>
+                <span class="df-name">${fmt.esc(it.name)}</span>
+                <span class="df-meta">${it.isDir ? '' : fmtSize(it.size)}</span>
+            </div>`).join('');
+    } catch (e) {
+        $('#df-list').innerHTML = `<div class="empty small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    }
+}
+
+async function dfOpenFile(path, name) {
+    const viewer = $('#df-viewer');
+    const dl = `/api/device/files/raw?path=${encodeURIComponent(path)}&download=1`;
+    const ext = name.split('.').pop().toLowerCase();
+    const isImg = ['png','jpg','jpeg','gif','webp'].includes(ext);
+    if (isImg) {
+        viewer.innerHTML = `
+            <div class="df-viewer-head"><code>${fmt.esc(path)}</code>
+                <a class="btn ghost small" href="${dl}">download</a></div>
+            <div class="df-img-wrap"><img src="/api/device/files/raw?path=${encodeURIComponent(path)}" alt="${fmt.esc(name)}"></div>`;
+        return;
+    }
+    viewer.innerHTML = '<div class="empty small">Loading…</div>';
+    try {
+        const d = await api.get(`/api/device/files/text?path=${encodeURIComponent(path)}`);
+        viewer.innerHTML = `
+            <div class="df-viewer-head"><code>${fmt.esc(path)}</code>
+                <a class="btn ghost small" href="${dl}">download</a></div>
+            ${d.truncated ? '<div class="muted small">(truncated preview)</div>' : ''}
+            <pre class="df-filebody">${fmt.esc(d.content)}</pre>`;
+    } catch (e) {
+        viewer.innerHTML = `
+            <div class="df-viewer-head"><code>${fmt.esc(path)}</code>
+                <a class="btn ghost small" href="${dl}">download</a></div>
+            <div class="empty small" style="color:var(--red)">Can't preview as text — ${fmt.esc(e.message)}. Use download.</div>`;
+    }
+}
+
+function dfFileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) return '🖼';
+    if (['db','sqlite','sqlite3'].includes(ext)) return '🗃';
+    if (['apk','jar','zip','tar','gz'].includes(ext)) return '📦';
+    if (['xml','json','txt','log','conf','prop','ini','md'].includes(ext)) return '📄';
+    if (['so','bin'].includes(ext)) return '⚙';
+    return '📄';
+}
+function fmtSize(n) {
+    if (n == null) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+    if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
+    return (n/1024/1024/1024).toFixed(1) + ' GB';
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
