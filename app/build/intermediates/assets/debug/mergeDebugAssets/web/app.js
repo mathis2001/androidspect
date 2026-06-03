@@ -2080,6 +2080,17 @@ let dlData = null;
 function initDeeplinks() {
     once('deeplinks', () => {
         $('#dl-refresh').addEventListener('click', () => { S.initialized.deeplinks = false; loadDeeplinks(true); });
+        // Enter in the free-form launcher fires it (delegated; input is re-rendered)
+        $('#dl-body').addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            if (e.target.id === 'dl-launch-uri') {
+                const btn = $('.dl-section .dl-launch[data-uri=""]') || e.target.parentElement.querySelector('.dl-launch');
+                await dlLaunch(e.target.value.trim(), btn || e.target);
+            } else if (e.target.id === 'dl-manual-domain') {
+                const dom = e.target.value.trim();
+                if (dom) await dlVerify(dom, $('#dl-manual-check'), true);
+            }
+        });
         // Delegated handlers for per-domain "Verify" buttons + manual check
         $('#dl-body').addEventListener('click', async (e) => {
             const vb = e.target.closest('.dl-verify');
@@ -2095,6 +2106,13 @@ function initDeeplinks() {
                 navigator.clipboard?.writeText(pc.dataset.cmd).then(
                     () => toast('Command copied', 'ok'),
                     () => toast('Copy failed', 'err'));
+                return;
+            }
+            const lb = e.target.closest('.dl-launch');
+            if (lb) {
+                // For the free-form launcher button, read the input live.
+                const uri = lb.dataset.uri || ($('#dl-launch-uri')?.value || '').trim();
+                await dlLaunch(uri, lb);
                 return;
             }
         });
@@ -2133,7 +2151,22 @@ function renderDeeplinks() {
                 : `<div class="muted small">Could not read signing certificate.</div>`}
         </div>`;
 
-    const domainsBlock = domains.length ? domains.map(dom => `
+    // Free-form deeplink launcher — fire an am start VIEW intent for any URI
+    // to observe how the app handles it (no component needed).
+    const launcherBlock = `
+        <div class="dl-section">
+            <div class="dl-section-title">Deeplink launcher</div>
+            <div class="dl-manual">
+                <input class="input mono small" id="dl-launch-uri" placeholder="scheme://host/path  or  https://domain/path" style="flex:1;max-width:420px">
+                <button class="btn small dl-launch" data-uri="">▶ Open</button>
+            </div>
+            <div class="muted small" style="margin-top:4px">Fires <code>am start -a android.intent.action.VIEW -d "&lt;uri&gt;"</code> on the device. If multiple apps handle the URI, Android shows the chooser.</div>
+            <div class="dl-launch-result" id="dl-launch-result"></div>
+        </div>`;
+
+    const domainsBlock = domains.length ? domains.map(dom => {
+        const sampleUri = `${dom.schemes.includes('https') ? 'https' : dom.schemes[0] || 'https'}://${dom.host}/`;
+        return `
         <div class="dl-domain">
             <div class="dl-domain-head">
                 <span class="dl-host">${fmt.esc(dom.host)}</span>
@@ -2141,13 +2174,14 @@ function renderDeeplinks() {
                     ? '<span class="tg cyan">autoVerify</span>'
                     : '<span class="tg warn">not autoVerified</span>'}
                 ${dom.schemes.map(s => `<span class="tg">${s}</span>`).join('')}
+                <button class="btn ghost small dl-launch" data-uri="${fmt.esc(sampleUri)}" title="Open ${fmt.esc(sampleUri)}">▶ Open</button>
                 <button class="btn small dl-verify" data-domain="${fmt.esc(dom.host)}">Verify assetlinks</button>
             </div>
             <div class="muted small">via ${fmt.esc(dom.component)}</div>
             ${!dom.autoVerify ? `<div class="dl-warn small">⚠ This domain is declared as a web link but the intent-filter is <strong>not</strong> marked <code>android:autoVerify="true"</code> — Android will show a disambiguation dialog instead of opening the app directly, and App Links verification won't run automatically.</div>` : ''}
             <div class="dl-verify-result" data-for="${fmt.esc(dom.host)}"></div>
-        </div>
-    `).join('') : `<div class="empty small">No http/https App Link domains declared in the manifest. The app may still use custom-scheme deeplinks (see the Components tab).</div>`;
+        </div>`;
+    }).join('') : `<div class="empty small">No http/https App Link domains declared in the manifest. The app may still use custom-scheme deeplinks (see the Components tab).</div>`;
 
     const manualBlock = `
         <div class="dl-section">
@@ -2174,14 +2208,16 @@ function renderDeeplinks() {
                 ${custom.map(s => {
                     const uri = s.example.endsWith('/') ? s.example : s.example + '/';
                     const cmd = `python3 DeepLinkHijacker.py -l "${uri}"`;
+                    const fullPath = s.path ? (s.path.startsWith('/') ? s.path : '/' + s.path) : '';
                     return `
                     <div class="dl-domain">
                         <div class="dl-domain-head">
-                            <span class="dl-host">${fmt.esc(s.scheme)}://${fmt.esc(s.host || '')}</span>
+                            <span class="dl-host">${fmt.esc(s.scheme)}://${fmt.esc(s.host || '')}${fmt.esc(fullPath)}</span>
                             ${s.exported ? '<span class="tg danger">exported</span>' : '<span class="tg">private</span>'}
                             ${s.browsable ? '<span class="tg cyan">browsable</span>' : '<span class="tg warn">not browsable</span>'}
+                            <button class="btn ghost small dl-launch" data-uri="${fmt.esc(uri)}" title="Open ${fmt.esc(uri)}" style="margin-left:auto">▶ Open</button>
                         </div>
-                        <div class="muted small">example: <code>${fmt.esc(s.example)}</code> · via ${fmt.esc(s.component)}</div>
+                        <div class="muted small">via ${fmt.esc(s.component)}</div>
                         <div class="dl-warn small">⚠ Custom schemes have no ownership verification — any installed app that registers <code>${fmt.esc(s.scheme)}://</code> can hijack these links.</div>
                         <div class="dl-poc-cmd">
                             <code class="dl-cmd-text" id="${'pocc_' + Math.random().toString(36).slice(2,8)}">${fmt.esc(cmd)}</code>
@@ -2194,12 +2230,13 @@ function renderDeeplinks() {
 
     $('#dl-body').innerHTML = `
         ${fpBlock}
+        ${manualBlock}
+        ${launcherBlock}
         <div class="dl-section">
             <div class="dl-section-title">Declared App Link domains (${domains.length})</div>
             ${domainsBlock}
         </div>
-        ${customBlock}
-        ${manualBlock}`;
+        ${customBlock}`;
 }
 
 async function dlVerify(domain, btn, isManual) {
@@ -2256,6 +2293,35 @@ function renderAssetlinks(r) {
             ${r.note ? `<div class="muted small">${fmt.esc(r.note)}</div>` : ''}
             <details class="dl-stmts"><summary class="small">statements</summary>${stmts}</details>
         </div>`;
+}
+
+async function dlLaunch(uri, btn) {
+    if (!uri) { toast('Enter a deeplink URI', 'err'); $('#dl-launch-uri')?.focus(); return; }
+    // Escape double quotes for the shell -d argument.
+    const safe = uri.replace(/"/g, '\\"');
+    const cmd = `am start -a android.intent.action.VIEW -d "${safe}"`;
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '…';
+    const resultBox = $('#dl-launch-result');
+    try {
+        const r = await api.post('/api/live/exec', { command: cmd });
+        const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+        const ok = r.code === 0;
+        if (resultBox && (btn.dataset.uri === '' || !btn.dataset.uri)) {
+            // Only the free-form launcher has a result box; inline buttons toast.
+            resultBox.innerHTML = `<div class="dl-result ${ok ? 'ok' : 'err'}">
+                <strong>${ok ? '✓ Sent' : '✗ exit ' + r.code}</strong>
+                <code class="dl-cmd-text" style="display:block;margin-top:6px">adb shell ${fmt.esc(cmd)}</code>
+                ${out ? `<pre class="dl-launch-out">${fmt.esc(out)}</pre>` : ''}
+            </div>`;
+        } else {
+            toast(ok ? `Opened: ${uri}` : `exit ${r.code}: ${out.slice(0,140) || 'no output'}`, ok ? 'ok' : 'err');
+        }
+    } catch (e) {
+        toast(e.message, 'err');
+    } finally {
+        btn.disabled = false; btn.textContent = orig;
+    }
 }
 
 function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }

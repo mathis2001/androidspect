@@ -91,11 +91,15 @@ fun Routing.deeplinkRoutes(context: Context) {
                             append(host ?: "host")
                             if (path != null) append(if (path.startsWith("/")) path else "/$path")
                         }
-                        val key = "$scheme|${host ?: ""}"
+                        // Key on the full shape (scheme|host|path) so distinct
+                        // paths under the same scheme/host are kept as separate
+                        // entries instead of collapsing to the first one.
+                        val key = "$scheme|${host ?: ""}|${path ?: ""}"
                         if (!custom.containsKey(key)) {
                             custom[key] = CustomScheme(
                                 scheme = scheme,
                                 host = host,
+                                path = path,
                                 example = example,
                                 browsable = isViewBrowsable,
                                 component = c.name,
@@ -266,6 +270,7 @@ data class DeeplinkReport(
 data class CustomScheme(
     val scheme: String,
     val host: String?,
+    val path: String? = null,
     val example: String,
     val browsable: Boolean,
     val component: String,

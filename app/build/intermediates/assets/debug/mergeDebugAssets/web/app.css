@@ -1337,3 +1337,12 @@ td.num  { color: var(--cyan); text-align: right; }
     padding: 7px 10px; color: var(--text); overflow-x: auto; white-space: pre;
 }
 .dl-cmd-copy { flex-shrink: 0; }
+
+/* ---- Deeplinks: launcher ---- */
+.dl-launch-result { margin-top: 8px; }
+.dl-launch-out {
+    margin: 6px 0 0; padding: 7px 10px; border-radius: var(--r-sm);
+    background: var(--bg); border: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    white-space: pre-wrap; word-break: break-all; color: var(--muted);
+}

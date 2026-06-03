@@ -124,15 +124,20 @@ class ComponentInspector(private val context: Context) {
                         "action"   -> attr("name")?.let { curFilter?.actions?.add(it) }
                         "category" -> attr("name")?.let { curFilter?.categories?.add(it) }
                         "data"     -> if (curFilter != null) {
-                            curFilter!!.data.add(IntentData(
-                                scheme = attr("scheme"),
-                                host = attr("host"),
-                                port = attr("port"),
-                                path = attr("path"),
-                                pathPrefix = attr("pathPrefix"),
-                                pathPattern = attr("pathPattern"),
-                                mimeType = attr("mimeType")
-                            ))
+                            // Android merges attributes across ALL <data> tags in
+                            // a filter and matches the cross-product. So we pool
+                            // each attribute separately rather than treating each
+                            // tag as a self-contained URI. A single tag may also
+                            // carry several attributes at once — both forms work.
+                            attr("scheme")?.let { curFilter!!.schemes.add(it) }
+                            attr("host")?.let { curFilter!!.hosts.add(it) }
+                            attr("port")?.let { curFilter!!.ports.add(it) }
+                            attr("path")?.let { curFilter!!.paths.add(it) }
+                            attr("pathPrefix")?.let { curFilter!!.paths.add(it) }
+                            attr("pathPattern")?.let { curFilter!!.paths.add(it) }
+                            attr("pathSuffix")?.let { curFilter!!.paths.add(it) }
+                            attr("pathAdvancedPattern")?.let { curFilter!!.paths.add(it) }
+                            attr("mimeType")?.let { curFilter!!.mimeTypes.add(it) }
                         }
                     }
                 } else if (event == XmlPullParser.END_TAG) {
@@ -160,9 +165,50 @@ class ComponentInspector(private val context: Context) {
     private class MutableFilter {
         val actions = mutableListOf<String>()
         val categories = mutableListOf<String>()
-        val data = mutableListOf<IntentData>()
+        // Pooled <data> attributes — Android merges them across all tags.
+        val schemes = mutableListOf<String>()
+        val hosts = mutableListOf<String>()
+        val ports = mutableListOf<String>()
+        val paths = mutableListOf<String>()
+        val mimeTypes = mutableListOf<String>()
         var autoVerify = false
-        fun toFilter() = IntentFilter(actions, categories, data, autoVerify)
+
+        /**
+         * Reconstruct concrete URI shapes from the pooled attributes the way
+         * Android resolves them: the effective set is the cross-product of
+         * schemes × hosts × paths (mimeType handled separately). Missing pools
+         * fall back to a single null so e.g. a scheme-only filter still yields
+         * one entry. This recovers deeplinks that span multiple <data> tags,
+         * which the previous one-entry-per-tag approach dropped.
+         */
+        fun toFilter(): IntentFilter {
+            val schemeList = schemes.distinct().ifEmpty { listOf<String?>(null) }
+            val hostList   = hosts.distinct().ifEmpty { listOf<String?>(null) }
+            val pathList   = paths.distinct().ifEmpty { listOf<String?>(null) }
+            val portOne    = ports.distinct().firstOrNull()
+            val mimeOne    = mimeTypes.distinct().firstOrNull()
+
+            val combined = mutableListOf<IntentData>()
+            for (sc in schemeList) for (h in hostList) for (pa in pathList) {
+                // Skip the fully-empty combination unless there's a mimeType
+                if (sc == null && h == null && pa == null && mimeOne == null) continue
+                combined.add(IntentData(
+                    scheme = sc,
+                    host = h,
+                    port = portOne,
+                    path = pa,
+                    pathPrefix = null,
+                    pathPattern = null,
+                    mimeType = mimeOne
+                ))
+            }
+            return IntentFilter(
+                actions = actions,
+                categories = categories,
+                data = combined,
+                autoVerify = autoVerify
+            )
+        }
     }
 }
 
