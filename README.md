@@ -4,26 +4,34 @@ Runtime audit tool for installed Android apps. Runs on a rooted phone, exposes a
 
 ## What it does
 
-Static inspection of any installed app on the device:
+Per-package static inspection and dynamic tests:
 
-* File browser for `/data/data/<pkg>`, with type-aware previews for text, JSON, XML, images, and a hex view for everything else
+* List installed apps with danger tags for debug, backup, network potential misconfigs.
+* File browser for `/data/data/<pkg>`, with type-aware previews for text, JSON, XML, images, and a hex view for everything ealse.
 * SQLite reader with tables, schema, paginated rows, ad-hoc SELECT, CSV export
 * SharedPreferences viewer and inline editor
-* Decoded `AndroidManifest.xml` with summary cards
-* Components list (activities, services, receivers, providers) with the exported badge in red, name filter, exported-only toggle, sort exported-first
+* Decoded `AndroidManifest.xml`
+* Components list (activities, services, receivers, providers) with the exported badge in red, name filter, exported-only toggle, sort exported-first.
+* Pre-builded (and callable) ADB commands based on the Manifest and the desassembled code.
 * Native libraries list per ABI with size and stripped-symbols flag, one-click `.so` download
+* Disassemble and store the smali code.
+* Verify deeplinks assetlinks.
+* Extract and open deeplinks.
+* A markdown editor to take notes directly through the web interface.
+
 
 Live runtime:
 
 * Logcat tail over WebSocket with severity colouring, regex highlight, save-to-file
 * Process snapshot from `/proc` with PID, PPID, UID, RSS, state, full cmdline
 * TCP and UDP socket table from `/proc/net` decoded to `ip:port` with the owning package
-* Root shell in the browser for one-shot `su` commands
 
-App actions:
+Actions:
 
 * Start, force-stop, clear data
 * Pull every APK file that makes up a package (base plus splits) as a single ZIP
+* Root shell in the browser for one-shot `su` commands
+* Device file explorer
 
 ## Compatibility
 
@@ -41,7 +49,7 @@ Core-library desugaring brings `java.time`, `java.util.function`, and `java.util
 
 ## Quick install
 
-1. Download `AndroidSpect-v0.1.0.apk` from the latest GitHub release.
+1. Download pre-build APK from the latest GitHub release.
 2. Copy it to the phone and tap to install (enable "Install unknown apps" for the file manager you use).
 3. Open AndroidSpect, tap **Start server**. Your root manager (Magisk / KernelSU) prompts for `su`. Grant it.
 4. The phone screen now shows an `https://<phone-ip>:8008` URL, a SHA-256 fingerprint, and a six-character browser password.
@@ -145,53 +153,6 @@ Logcat live tail.
 
 ![Logcat](screenshots/08-logcat.png)
 
-## Project layout
-
-```
-AndroidSpect/
-  build.gradle.kts                        root Kotlin DSL build
-  settings.gradle.kts
-  gradle/libs.versions.toml               version catalog
-  app/
-    build.gradle.kts                      minSdk 21, targetSdk 36
-    src/main/
-      AndroidManifest.xml
-      kotlin/com/androidspect/
-        AndroidSpectApp.kt                Application, libsu shell builder
-        MainActivity.kt                   Compose entry
-        ui/                               Material 3 dashboard
-        server/
-          AndroidSpectServer.kt           Ktor wiring, TLS, WebSocket
-          ServerService.kt                foreground service
-          Security.kt                     password auth, session cookie, rate limit
-          TlsManager.kt                   self-signed cert generation
-          BootReceiver.kt
-          routes/                         HTTP endpoints grouped by domain
-          ws/LogcatBridge.kt              WebSocket for logcat tail
-        root/                             privileged primitives, all via libsu
-          RootBridge.kt                   single persistent su shell
-          AppDataReader.kt                PackageManager + /data/data
-          SqliteReader.kt                 staged copy then framework SQLite
-          SharedPrefsParser.kt
-          LogcatStreamer.kt
-          ProcessReader.kt
-          NetReader.kt                    /proc/net parser
-          AppActions.kt                   am / pm wrappers
-          ManifestDecoder.kt
-          ComponentInspector.kt
-          NativeLibScanner.kt
-          Sanitize.kt
-        data/AppInfo.kt
-      assets/web/                         embedded UI served by Ktor
-        index.html
-        app.css
-        app.js
-        icon.svg
-      res/                                icons, strings, themes
-  screenshots/                            images for this README
-  README.md
-```
-
 ## Security model
 
 * Password is set on first run and shown only in the on-device app. Browser sign-in uses a session cookie (HttpOnly, Secure, SameSite=Strict).
@@ -221,4 +182,4 @@ AndroidSpect/
 
 All rights reserved.
 
-Author: Sandeep Wawdane.
+All credits goes to Sandeep Wawdane.
