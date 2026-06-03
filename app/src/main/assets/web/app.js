@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -2074,9 +2074,153 @@ function mdToHtml(src) {
     return html;
 }
 
+// ============== DEEPLINKS tab ==============
+let dlData = null;
+
+function initDeeplinks() {
+    once('deeplinks', () => {
+        $('#dl-refresh').addEventListener('click', () => { S.initialized.deeplinks = false; loadDeeplinks(true); });
+        // Delegated handlers for per-domain "Verify" buttons + manual check
+        $('#dl-body').addEventListener('click', async (e) => {
+            const vb = e.target.closest('.dl-verify');
+            if (vb) { await dlVerify(vb.dataset.domain, vb); return; }
+            const mb = e.target.closest('#dl-manual-check');
+            if (mb) {
+                const dom = $('#dl-manual-domain').value.trim();
+                if (dom) await dlVerify(dom, mb, true);
+            }
+        });
+    });
+    loadDeeplinks(false);
+}
+
+function refreshDeeplinks() { loadDeeplinks(false); }
+
+async function loadDeeplinks(force) {
+    if (!S.pkg) return;
+    if (!force && dlData && dlData.packageName === S.pkg) { renderDeeplinks(); return; }
+    $('#dl-status').textContent = 'analyzing…';
+    $('#dl-body').innerHTML = '<div class="empty small">Reading App Links from manifest…</div>';
+    try {
+        dlData = await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/deeplinks`);
+        $('#dl-status').textContent = '';
+        renderDeeplinks();
+    } catch (e) {
+        $('#dl-status').textContent = '';
+        $('#dl-body').innerHTML = `<div class="empty small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    }
+}
+
+function renderDeeplinks() {
+    const d = dlData;
+    const fp = d.signingSha256;
+    const domains = d.domains || [];
+
+    const fpBlock = `
+        <div class="dl-section">
+            <div class="dl-section-title">App signing certificate (SHA-256)</div>
+            ${fp
+                ? `<code class="dl-fp">${fmt.esc(fp)}</code>
+                   <div class="muted small">This is the fingerprint that must appear in each domain's assetlinks.json for verification to pass.</div>`
+                : `<div class="muted small">Could not read signing certificate.</div>`}
+        </div>`;
+
+    const domainsBlock = domains.length ? domains.map(dom => `
+        <div class="dl-domain">
+            <div class="dl-domain-head">
+                <span class="dl-host">${fmt.esc(dom.host)}</span>
+                ${dom.autoVerify
+                    ? '<span class="tg cyan">autoVerify</span>'
+                    : '<span class="tg warn">not autoVerified</span>'}
+                ${dom.schemes.map(s => `<span class="tg">${s}</span>`).join('')}
+                <button class="btn small dl-verify" data-domain="${fmt.esc(dom.host)}">Verify assetlinks</button>
+            </div>
+            <div class="muted small">via ${fmt.esc(dom.component)}</div>
+            ${!dom.autoVerify ? `<div class="dl-warn small">⚠ This domain is declared as a web link but the intent-filter is <strong>not</strong> marked <code>android:autoVerify="true"</code> — Android will show a disambiguation dialog instead of opening the app directly, and App Links verification won't run automatically.</div>` : ''}
+            <div class="dl-verify-result" data-for="${fmt.esc(dom.host)}"></div>
+        </div>
+    `).join('') : `<div class="empty small">No http/https App Link domains declared in the manifest. The app may still use custom-scheme deeplinks (see the Components tab).</div>`;
+
+    const manualBlock = `
+        <div class="dl-section">
+            <div class="dl-section-title">Check any domain manually</div>
+            <div class="dl-manual">
+                <input class="input mono small" id="dl-manual-domain" placeholder="example.com" style="flex:1;max-width:320px">
+                <button class="btn small" id="dl-manual-check">Verify assetlinks</button>
+            </div>
+            <div class="dl-verify-result" data-for="__manual__"></div>
+        </div>`;
+
+    $('#dl-body').innerHTML = `
+        ${fpBlock}
+        <div class="dl-section">
+            <div class="dl-section-title">Declared App Link domains (${domains.length})</div>
+            ${domainsBlock}
+        </div>
+        ${manualBlock}`;
+}
+
+async function dlVerify(domain, btn, isManual) {
+    const resultSel = `.dl-verify-result[data-for="${isManual ? '__manual__' : cssEsc(domain)}"]`;
+    const box = document.querySelector(resultSel) || (isManual ? document.querySelector('.dl-verify-result[data-for="__manual__"]') : null);
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '…';
+    if (box) box.innerHTML = '<div class="muted small">Fetching /.well-known/assetlinks.json…</div>';
+    try {
+        const qp = new URLSearchParams({ domain, pkg: S.pkg });
+        if (dlData?.signingSha256) qp.set('fp', dlData.signingSha256);
+        const r = await api.get(`/api/deeplinks/assetlinks?${qp.toString()}`);
+        if (box) box.innerHTML = renderAssetlinks(r);
+    } catch (e) {
+        if (box) box.innerHTML = `<div class="dl-warn small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    } finally {
+        btn.disabled = false; btn.textContent = orig;
+    }
+}
+
+function renderAssetlinks(r) {
+    if (!r.reachable) {
+        return `<div class="dl-result err"><strong>✗ Unreachable</strong><div class="muted small">${fmt.esc(r.error || '')}</div><div class="muted small">${fmt.esc(r.url)}</div></div>`;
+    }
+    if (!r.valid) {
+        return `<div class="dl-result err"><strong>✗ Invalid</strong> <span class="muted small">(HTTP ${r.httpStatus ?? '?'})</span><div class="muted small">${fmt.esc(r.error || '')}</div></div>`;
+    }
+
+    // The file itself is valid → the card is always green. App authorization is
+    // a SEPARATE, secondary status: a valid file that simply doesn't list this
+    // app is still a valid file, so it must not be shown as an error.
+    const stmts = (r.statements || []).map(s => `
+        <div class="dl-stmt">
+            <div class="small"><span class="muted">package:</span> <code>${fmt.esc(s.packageName || '—')}</code> <span class="muted">(${fmt.esc(s.namespace || '?')})</span></div>
+            <div class="small"><span class="muted">relations:</span> ${(s.relations||[]).map(x=>`<code>${fmt.esc(x.replace('delegate_permission/',''))}</code>`).join(' ') || '—'}</div>
+            <div class="small"><span class="muted">fingerprints:</span> ${(s.sha256Fingerprints||[]).length}</div>
+        </div>`).join('');
+
+    // Secondary line: does this file authorize the current app?
+    const auth = r.authorizesApp;   // true | false | null (not checked)
+    let authLine = '';
+    if (auth === true) {
+        authLine = `<div class="dl-auth small dl-auth-ok">✓ Authorizes this app${r.authDetail ? ' — ' + fmt.esc(r.authDetail) : ''}</div>`;
+    } else if (auth === false) {
+        authLine = `<div class="dl-auth small dl-auth-bad">✗ Does not authorize this app${r.authDetail ? ' — ' + fmt.esc(r.authDetail) : ''}</div>`;
+    } else if (r.authDetail) {
+        authLine = `<div class="dl-auth small muted">${fmt.esc(r.authDetail)}</div>`;
+    }
+
+    return `
+        <div class="dl-result ok">
+            <strong>✓ assetlinks.json valid</strong> <span class="muted small">(HTTP 200, ${(r.statements||[]).length} statement(s))</span>
+            ${authLine}
+            ${r.note ? `<div class="muted small">${fmt.esc(r.note)}</div>` : ''}
+            <details class="dl-stmts"><summary class="small">statements</summary>${stmts}</details>
+        </div>`;
+}
+
+function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

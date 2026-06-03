@@ -1283,3 +1283,45 @@ td.num  { color: var(--cyan); text-align: right; }
 .cmp-extra-rm { flex-shrink: 0; color: var(--muted); }
 .cmp-extra-rm:hover { color: var(--red); }
 .cmp-extras-cmd { display: block; }
+
+/* ---- Deeplinks tab ---- */
+.dl-section { margin: 4px 4px 18px; }
+.dl-section-title {
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+}
+.dl-fp {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+    background: var(--elevated); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 6px 10px; word-break: break-all; margin-bottom: 4px;
+}
+.dl-domain {
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 10px 12px; margin-bottom: 10px; background: var(--bg-2);
+}
+.dl-domain-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dl-host { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); }
+.dl-domain-head .dl-verify { margin-left: auto; }
+.dl-warn {
+    margin-top: 8px; padding: 7px 10px; border-radius: var(--r-sm);
+    background: rgba(240,176,58,0.08); border: 1px solid rgba(240,176,58,0.3);
+    color: var(--text); line-height: 1.5;
+}
+.dl-manual { display: flex; gap: 8px; align-items: center; }
+.dl-verify-result { margin-top: 8px; }
+.dl-result {
+    border-radius: var(--r-sm); padding: 9px 12px;
+    border: 1px solid var(--line); background: var(--elevated);
+}
+.dl-result.ok   { border-color: rgba(63,185,80,0.4);  background: rgba(63,185,80,0.07); }
+.dl-result.err  { border-color: rgba(244,63,94,0.4);  background: rgba(244,63,94,0.07); }
+.dl-result.warn { border-color: rgba(240,176,58,0.4); background: rgba(240,176,58,0.07); }
+.dl-auth { margin-top: 5px; }
+.dl-stmts { margin-top: 8px; }
+.dl-stmts summary { cursor: pointer; color: var(--accent); }
+.dl-stmt {
+    border-left: 2px solid var(--line); padding-left: 10px; margin: 8px 0;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.dl-auth-ok  { color: var(--green, #3fb950); font-weight: 600; }
+.dl-auth-bad { color: var(--red, #f43f5e); font-weight: 600; }

@@ -6,6 +6,7 @@ import com.androidspect.root.AppDataReader
 import com.androidspect.server.routes.appRoutes
 import com.androidspect.server.routes.assetRoutes
 import com.androidspect.server.routes.decompilerRoutes
+import com.androidspect.server.routes.deeplinkRoutes
 import com.androidspect.server.routes.fileRoutes
 import com.androidspect.server.routes.liveRoutes
 import com.androidspect.server.routes.manifestRoutes
@@ -159,6 +160,7 @@ class AndroidSpectServer(
                 manifestRoutes(context)
                 liveRoutes(context)
                 decompilerRoutes(context)
+                deeplinkRoutes(context)
                 notesRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()

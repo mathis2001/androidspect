@@ -114,7 +114,13 @@ class ComponentInspector(private val context: Context) {
                             currentComponent = attr("name")
                             inComponent = true
                         }
-                        "intent-filter" -> if (inComponent) curFilter = MutableFilter()
+                        "intent-filter" -> if (inComponent) {
+                            curFilter = MutableFilter()
+                            // android:autoVerify="true" marks this as an App Link
+                            // filter that Android will verify against the domain's
+                            // assetlinks.json at install time.
+                            curFilter!!.autoVerify = attr("autoVerify") == "true"
+                        }
                         "action"   -> attr("name")?.let { curFilter?.actions?.add(it) }
                         "category" -> attr("name")?.let { curFilter?.categories?.add(it) }
                         "data"     -> if (curFilter != null) {
@@ -155,7 +161,8 @@ class ComponentInspector(private val context: Context) {
         val actions = mutableListOf<String>()
         val categories = mutableListOf<String>()
         val data = mutableListOf<IntentData>()
-        fun toFilter() = IntentFilter(actions, categories, data)
+        var autoVerify = false
+        fun toFilter() = IntentFilter(actions, categories, data, autoVerify)
     }
 }
 
@@ -174,7 +181,8 @@ data class IntentData(
 data class IntentFilter(
     val actions: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
-    val data: List<IntentData> = emptyList()
+    val data: List<IntentData> = emptyList(),
+    val autoVerify: Boolean = false
 )
 
 @Serializable
