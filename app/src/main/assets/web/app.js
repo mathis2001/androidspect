@@ -2088,6 +2088,14 @@ function initDeeplinks() {
             if (mb) {
                 const dom = $('#dl-manual-domain').value.trim();
                 if (dom) await dlVerify(dom, mb, true);
+                return;
+            }
+            const pc = e.target.closest('.dl-cmd-copy');
+            if (pc) {
+                navigator.clipboard?.writeText(pc.dataset.cmd).then(
+                    () => toast('Command copied', 'ok'),
+                    () => toast('Copy failed', 'err'));
+                return;
             }
         });
     });
@@ -2151,12 +2159,46 @@ function renderDeeplinks() {
             <div class="dl-verify-result" data-for="__manual__"></div>
         </div>`;
 
+    // Custom-scheme deeplinks (non-http/https). These can't use App Links
+    // verification, so any app registering the same scheme can intercept them.
+    const custom = d.customSchemes || [];
+    const customBlock = `
+        <div class="dl-section">
+            <div class="dl-section-title">Custom-scheme deeplinks (${custom.length})</div>
+            ${custom.length ? `
+                <div class="muted small" style="margin-bottom:10px">
+                    Build a hijacking PoC app with
+                    <a href="https://github.com/mathis2001/DeepLinkHijackingPoC" target="_blank" rel="noopener">DeepLinkHijackingPoC</a>.
+                    Each scheme below has a ready-to-run command.
+                </div>
+                ${custom.map(s => {
+                    const uri = s.example.endsWith('/') ? s.example : s.example + '/';
+                    const cmd = `python3 DeepLinkHijacker.py -l "${uri}"`;
+                    return `
+                    <div class="dl-domain">
+                        <div class="dl-domain-head">
+                            <span class="dl-host">${fmt.esc(s.scheme)}://${fmt.esc(s.host || '')}</span>
+                            ${s.exported ? '<span class="tg danger">exported</span>' : '<span class="tg">private</span>'}
+                            ${s.browsable ? '<span class="tg cyan">browsable</span>' : '<span class="tg warn">not browsable</span>'}
+                        </div>
+                        <div class="muted small">example: <code>${fmt.esc(s.example)}</code> · via ${fmt.esc(s.component)}</div>
+                        <div class="dl-warn small">⚠ Custom schemes have no ownership verification — any installed app that registers <code>${fmt.esc(s.scheme)}://</code> can hijack these links.</div>
+                        <div class="dl-poc-cmd">
+                            <code class="dl-cmd-text" id="${'pocc_' + Math.random().toString(36).slice(2,8)}">${fmt.esc(cmd)}</code>
+                            <button class="btn ghost small dl-cmd-copy" data-cmd="${fmt.esc(cmd)}">copy</button>
+                        </div>
+                    </div>`;
+                }).join('')}
+            ` : `<div class="empty small">No custom-scheme deeplinks declared.</div>`}
+        </div>`;
+
     $('#dl-body').innerHTML = `
         ${fpBlock}
         <div class="dl-section">
             <div class="dl-section-title">Declared App Link domains (${domains.length})</div>
             ${domainsBlock}
         </div>
+        ${customBlock}
         ${manualBlock}`;
 }
 
@@ -2217,6 +2259,7 @@ function renderAssetlinks(r) {
 }
 
 function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
 
 // ============== Dispatch ==============
 const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks };

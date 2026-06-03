@@ -72,10 +72,45 @@ fun Routing.deeplinkRoutes(context: Context) {
             // The cert fingerprint Android expects in assetlinks.json
             val fp = signingSha256(context, pkg)
 
+            // Custom-scheme deeplinks (anything that isn't http/https) — these
+            // can't use App Links verification, so they're inherently hijackable
+            // by any app that also registers the scheme. Collect scheme + the
+            // example URI shape (scheme://host/path) for the PoC builder.
+            val custom = LinkedHashMap<String, CustomScheme>()
+            for (c in all) {
+                for (f in c.filters) {
+                    val isViewBrowsable = f.actions.contains("android.intent.action.VIEW") &&
+                        f.categories.contains("android.intent.category.BROWSABLE")
+                    for (d in f.data) {
+                        val scheme = d.scheme ?: continue
+                        if (scheme == "http" || scheme == "https") continue
+                        val host = d.host
+                        val path = d.path ?: d.pathPrefix ?: d.pathPattern
+                        val example = buildString {
+                            append(scheme).append("://")
+                            append(host ?: "host")
+                            if (path != null) append(if (path.startsWith("/")) path else "/$path")
+                        }
+                        val key = "$scheme|${host ?: ""}"
+                        if (!custom.containsKey(key)) {
+                            custom[key] = CustomScheme(
+                                scheme = scheme,
+                                host = host,
+                                example = example,
+                                browsable = isViewBrowsable,
+                                component = c.name,
+                                exported = c.exported
+                            )
+                        }
+                    }
+                }
+            }
+
             call.respond(DeeplinkReport(
                 packageName = pkg,
                 signingSha256 = fp,
-                domains = domains.values.toList()
+                domains = domains.values.toList(),
+                customSchemes = custom.values.toList()
             ))
         }
     }
@@ -223,7 +258,18 @@ data class AppLinkDomain(
 data class DeeplinkReport(
     val packageName: String,
     val signingSha256: String?,
-    val domains: List<AppLinkDomain>
+    val domains: List<AppLinkDomain>,
+    val customSchemes: List<CustomScheme> = emptyList()
+)
+
+@Serializable
+data class CustomScheme(
+    val scheme: String,
+    val host: String?,
+    val example: String,
+    val browsable: Boolean,
+    val component: String,
+    val exported: Boolean
 )
 
 @Serializable

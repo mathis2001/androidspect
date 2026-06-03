@@ -1325,3 +1325,15 @@ td.num  { color: var(--cyan); text-align: right; }
 }
 .dl-auth-ok  { color: var(--green, #3fb950); font-weight: 600; }
 .dl-auth-bad { color: var(--red, #f43f5e); font-weight: 600; }
+
+/* ---- Deeplinks: PoC command ---- */
+.dl-poc-cmd {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.dl-cmd-text {
+    flex: 1; min-width: 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+    background: var(--elevated); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 7px 10px; color: var(--text); overflow-x: auto; white-space: pre;
+}
+.dl-cmd-copy { flex-shrink: 0; }
