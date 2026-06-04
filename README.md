@@ -18,6 +18,7 @@ Per-package static inspection and dynamic tests:
 * Verify deeplinks assetlinks.
 * Extract and open deeplinks.
 * A markdown editor to take notes directly through the web interface.
+* A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring)
 
 
 Live runtime:
@@ -140,6 +141,14 @@ Native libraries per ABI with size and stripped flag, one-click `.so` download.
 
 ![Native libraries](screenshots/06-native.png)
 
+Deeplinks validation and testing
+
+![Deeplinks](screenshots/15-Deeplinks.PNG)
+
+Snapshots & Diffs
+
+![Snapshots](screenshots/14-Snapshots.PNG)
+
 Markdown notes feature
 
 ![Notes1](screenshots/12-notes.PNG)
@@ -152,6 +161,10 @@ Process list from `/proc`.
 Logcat live tail.
 
 ![Logcat](screenshots/08-logcat.png)
+
+File Explorer
+
+![FileExplorer](screenshots/16-FileExplorer.PNG)
 
 ## Security model
 
