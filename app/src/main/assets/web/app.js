@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -2469,9 +2469,220 @@ function fmtSize(n) {
     return (n/1024/1024/1024).toFixed(1) + ' GB';
 }
 
+// ============== SNAPSHOTS tab ==============
+let snapList = [];
+
+function initSnapshots() {
+    once('snapshots', () => {
+        $('#snap-capture').addEventListener('click', snapCapture);
+        $('#snap-capture-apk').addEventListener('click', snapCaptureApk);
+        $('#snap-diff').addEventListener('click', snapRunDiff);
+        $('#snap-list').addEventListener('click', e => {
+            const del = e.target.closest('.snap-del');
+            if (del) { snapDelete(del.dataset.id); return; }
+        });
+    });
+    snapLoadList();
+}
+function refreshSnapshots() { snapLoadList(); }
+
+async function snapLoadList() {
+    if (!S.pkg) return;
+    $('#snap-status').textContent = '';
+    try {
+        snapList = await api.get(`/api/snapshots/${encodeURIComponent(S.pkg)}`);
+        renderSnapList();
+        fillSnapSelects();
+    } catch (e) {
+        $('#snap-list').innerHTML = `<div class="empty small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    }
+}
+
+function renderSnapList() {
+    if (!snapList.length) {
+        $('#snap-list').innerHTML = '<div class="empty small">No snapshots yet. Click “Snapshot now”.</div>';
+        return;
+    }
+    $('#snap-list').innerHTML = snapList.map(s => `
+        <div class="snap-item">
+            <div class="snap-item-main">
+                <span class="snap-ver">v${fmt.esc(s.versionName || '?')} (${s.versionCode})</span>
+                <span class="snap-when">${new Date(s.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="muted small">${s.source.startsWith('apk') ? '📦 APK' : '📱 installed'} · ${s.componentCount} comp · ${s.classCount} classes</div>
+            <button class="btn ghost small snap-del" data-id="${fmt.esc(s.id)}" title="Delete snapshot">✕</button>
+        </div>`).join('');
+}
+
+function fillSnapSelects() {
+    const opts = snapList.map(s =>
+        `<option value="${fmt.esc(s.id)}">v${fmt.esc(s.versionName||'?')} (${s.versionCode}) · ${new Date(s.createdAt).toLocaleString()}</option>`
+    ).join('');
+    const a = $('#snap-a'), b = $('#snap-b');
+    a.innerHTML = opts; b.innerHTML = opts;
+    // Default: a = older (last), b = newer (first)
+    if (snapList.length >= 2) {
+        a.value = snapList[snapList.length - 1].id;
+        b.value = snapList[0].id;
+    }
+}
+
+async function snapCapture() {
+    if (!S.pkg) { toast('Pick an app first', 'err'); return; }
+    const btn = $('#snap-capture'); btn.disabled = true;
+    $('#snap-status').textContent = 'capturing…';
+    try {
+        const includeDataDir = $('#snap-include-data').checked;
+        await api.post(`/api/snapshots/${encodeURIComponent(S.pkg)}`, { includeDataDir });
+        $('#snap-status').textContent = 'snapshot saved';
+        toast('Snapshot captured', 'ok');
+        await snapLoadList();
+    } catch (e) { toast(e.message, 'err'); $('#snap-status').textContent = ''; }
+    finally { btn.disabled = false; }
+}
+
+async function snapCaptureApk() {
+    const apkPath = $('#snap-apk-path').value.trim();
+    const pkg = $('#snap-apk-pkg').value.trim() || S.pkg;
+    if (!apkPath) { toast('Enter an APK path', 'err'); return; }
+    const btn = $('#snap-capture-apk'); btn.disabled = true;
+    $('#snap-status').textContent = 'capturing APK…';
+    try {
+        await api.post('/api/snapshots/apk', { apkPath, pkg });
+        toast('APK snapshot captured', 'ok');
+        $('#snap-status').textContent = 'snapshot saved';
+        // Reload list for the *current* pkg (apk snapshot is stored under pkg)
+        if (pkg === S.pkg) await snapLoadList();
+    } catch (e) { toast(e.message, 'err'); $('#snap-status').textContent = ''; }
+    finally { btn.disabled = false; }
+}
+
+async function snapDelete(id) {
+    if (!confirm('Delete this snapshot?')) return;
+    try {
+        await api.del(`/api/snapshots/${encodeURIComponent(S.pkg)}/${encodeURIComponent(id)}`);
+        await snapLoadList();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function snapRunDiff() {
+    const a = $('#snap-a').value, b = $('#snap-b').value;
+    if (!a || !b) { toast('Need two snapshots', 'err'); return; }
+    if (a === b) { toast('Pick two different snapshots', 'err'); return; }
+    $('#snap-diff-view').innerHTML = '<div class="empty small">Diffing…</div>';
+    try {
+        const d = await api.get(`/api/snapshots/${encodeURIComponent(S.pkg)}/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+        renderSnapDiff(d);
+    } catch (e) {
+        $('#snap-diff-view').innerHTML = `<div class="empty small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    }
+}
+
+function renderSnapDiff(d) {
+    const sec = (title, body, count) => `
+        <div class="snap-diff-sec">
+            <div class="snap-diff-title">${title} ${count != null ? `<span class="count">${count}</span>` : ''}</div>
+            ${body}
+        </div>`;
+
+    // Expandable list: shows the first `cap` items, the remainder behind a
+    // "show N more" <details> toggle — so nothing is permanently hidden.
+    const CAP = 100;
+    const list = (arr, cls) => {
+        if (!arr.length) return '<div class="muted small">none</div>';
+        const head = arr.slice(0, CAP);
+        const rest = arr.slice(CAP);
+        const li = x => `<li>${fmt.esc(x)}</li>`;
+        let html = `<ul class="snap-diff-list ${cls||''}">${head.map(li).join('')}</ul>`;
+        if (rest.length) {
+            html += `<details class="snap-more">
+                <summary>show ${rest.length} more</summary>
+                <ul class="snap-diff-list ${cls||''}">${rest.map(li).join('')}</ul>
+            </details>`;
+        }
+        return html;
+    };
+
+    const header = `
+        <div class="snap-diff-head">
+            <strong>${fmt.esc(d.from.versionName)} (${d.from.versionCode})</strong> →
+            <strong>${fmt.esc(d.to.versionName)} (${d.to.versionCode})</strong>
+            ${d.versionChanged ? '<span class="tg cyan">version changed</span>' : '<span class="tg">same version</span>'}
+            ${d.signingChanged ? '<span class="tg danger">signing cert CHANGED</span>' : ''}
+        </div>
+        <div class="muted small" style="margin-bottom:12px">
+            ${d.minSdkChange ? `minSdk ${fmt.esc(d.minSdkChange)} · ` : ''}
+            ${d.targetSdkChange ? `targetSdk ${fmt.esc(d.targetSdkChange)} · ` : ''}
+            manifest ${d.manifestChanged ? '<span style="color:var(--accent)">changed</span>' : 'unchanged'}
+        </div>`;
+
+    // Manifest security attributes (minSdk/targetSdk direction, backup, cleartext)
+    const mfChanges = d.manifestSecurityChanges || [];
+    const sevIcon = { good: '✓', info: 'ℹ', warn: '⚠' };
+    const manifestSec = sec('Manifest security',
+        mfChanges.length
+            ? `<ul class="snap-mf-list">${mfChanges.map(m => `
+                <li class="snap-mf-row sev-${fmt.esc(m.severity)}">
+                    <span class="snap-mf-icon">${sevIcon[m.severity] || '•'}</span>
+                    <span class="snap-mf-attr">${fmt.esc(m.attribute)}</span>
+                    <span class="snap-mf-val">${fmt.esc(m.from)} → ${fmt.esc(m.to)}</span>
+                    <span class="snap-mf-note">${fmt.esc(m.note)}</span>
+                </li>`).join('')}</ul>`
+            : '<div class="muted small">no security-relevant manifest changes</div>',
+        mfChanges.length || null);
+
+    const perms = sec('Permissions',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${d.permsAdded.length})</div>${list(d.permsAdded,'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${d.permsRemoved.length})</div>${list(d.permsRemoved,'removed')}</div>
+        </div>`, d.permsAdded.length + d.permsRemoved.length);
+
+    const compFmt = c => `${c.type}: ${c.name}${c.exported ? ' [exported]' : ''}`;
+    const comps = sec('Components',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${d.componentsAdded.length})</div>${list(d.componentsAdded.map(compFmt),'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${d.componentsRemoved.length})</div>${list(d.componentsRemoved.map(compFmt),'removed')}</div>
+        </div>
+        ${d.componentsChanged.length ? `<div class="snap-col-h changed">~ changed (${d.componentsChanged.length})</div>${list(d.componentsChanged.map(c=>`${c.type}: ${c.name} — ${c.changes.join('; ')}`),'changed')}` : ''}`,
+        d.componentsAdded.length + d.componentsRemoved.length + d.componentsChanged.length);
+
+    const deeplinks = sec('Deeplinks',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${(d.deeplinksAdded||[]).length})</div>${list(d.deeplinksAdded||[],'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${(d.deeplinksRemoved||[]).length})</div>${list(d.deeplinksRemoved||[],'removed')}</div>
+        </div>`,
+        (d.deeplinksAdded||[]).length + (d.deeplinksRemoved||[]).length);
+
+    const native = sec('Native libraries',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${(d.nativeAdded||[]).length})</div>${list(d.nativeAdded||[],'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${(d.nativeRemoved||[]).length})</div>${list(d.nativeRemoved||[],'removed')}</div>
+        </div>
+        ${(d.nativeChanged||[]).length ? `<div class="snap-col-h changed">~ modified (${d.nativeChanged.length})</div>${list(d.nativeChanged,'changed')}` : ''}`,
+        (d.nativeAdded||[]).length + (d.nativeRemoved||[]).length + (d.nativeChanged||[]).length);
+
+    const code = sec('Code (classes)',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${d.classesAdded.length})</div>${list(d.classesAdded,'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${d.classesRemoved.length})</div>${list(d.classesRemoved,'removed')}</div>
+        </div>
+        ${d.classesChanged.length ? `<div class="snap-col-h changed">~ method-count changed (${d.classesChanged.length})</div>${list(d.classesChanged.map(c=>`${c.name}: ${c.before} → ${c.after} methods`),'changed')}` : ''}`,
+        d.classesAdded.length + d.classesRemoved.length + d.classesChanged.length);
+
+    const data = sec('Data dir',
+        `<div class="snap-cols">
+            <div><div class="snap-col-h added">+ added (${d.dataAdded.length})</div>${list(d.dataAdded,'added')}</div>
+            <div><div class="snap-col-h removed">− removed (${d.dataRemoved.length})</div>${list(d.dataRemoved,'removed')}</div>
+        </div>
+        ${d.dataChanged.length ? `<div class="snap-col-h changed">~ modified (${d.dataChanged.length})</div>${list(d.dataChanged,'changed')}` : ''}`,
+        d.dataAdded.length + d.dataRemoved.length + d.dataChanged.length);
+
+    $('#snap-diff-view').innerHTML = header + manifestSec + perms + comps + deeplinks + native + code + data;
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
