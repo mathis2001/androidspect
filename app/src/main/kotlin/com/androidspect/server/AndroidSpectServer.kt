@@ -162,7 +162,7 @@ class AndroidSpectServer(
                 liveRoutes(context)
                 decompilerRoutes(context)
                 deeplinkRoutes(context)
-                deviceFilesRoutes()
+                deviceFilesRoutes(context)
                 notesRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()

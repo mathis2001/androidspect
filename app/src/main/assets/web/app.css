@@ -1382,3 +1382,8 @@ td.num  { color: var(--cyan); text-align: right; }
 }
 .df-img-wrap { padding: 14px; text-align: center; }
 .df-img-wrap img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.df-list.df-dragover {
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
+    background: rgba(88,166,255,0.06);
+}

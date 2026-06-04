@@ -1,21 +1,28 @@
 package com.androidspect.server.routes
 
+import android.content.Context
 import com.androidspect.root.RootBridge
 import com.androidspect.root.Sanitize
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.http.content.streamProvider
+import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -31,7 +38,9 @@ import java.util.zip.ZipOutputStream
  *   GET /api/device/files/text?path=/abs/file              → first N KB as text
  *   GET /api/device/files/zip?path=/abs/dir                → dir as ZIP
  */
-fun Routing.deviceFilesRoutes() {
+fun Routing.deviceFilesRoutes(context: Context) {
+
+    val stageDir = File(context.cacheDir, "upload").also { it.mkdirs() }
 
     route("/api/device/files") {
 
@@ -119,6 +128,66 @@ fun Routing.deviceFilesRoutes() {
                 }
             }
         }
+
+        /**
+         * Upload one or more files into a device directory.
+         * POST /api/device/files/upload?path=/abs/dir   (multipart/form-data)
+         *
+         * Each file part is streamed to the app cache, then pushed to the
+         * destination through the root shell (cat + chmod) so it lands with
+         * root ownership in directories the app process itself can't write.
+         */
+        post("/upload") {
+            val dir = normalize(call.request.queryParameters["path"]
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "path required")))
+            if (!isSafeAbs(dir)) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid path"))
+
+            // Destination must be an existing directory.
+            val isDir = RootBridge.exec("[ -d '$dir' ] && echo y || echo n").stdout.trim() == "y"
+            if (!isDir) return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "not a directory: $dir"))
+
+            val written = mutableListOf<String>()
+            val errors  = mutableListOf<String>()
+
+            val multipart = call.receiveMultipart()
+            multipart.forEachPart { part ->
+                if (part is PartData.FileItem) {
+                    val rawName = part.originalFileName ?: "upload.bin"
+                    // Keep only the basename, strip any path components/metachars.
+                    val safeName = rawName.substringAfterLast('/').substringAfterLast('\\')
+                        .filter { it.isLetterOrDigit() || it in "._- ()[]" }
+                        .ifBlank { "upload.bin" }
+                    val staged = File(stageDir, "stage_${System.nanoTime()}_$safeName")
+                    try {
+                        // Stream the part to the app cache first.
+                        part.streamProvider().use { input ->
+                            staged.outputStream().use { out -> input.copyTo(out) }
+                        }
+                        val dest = "$dir/$safeName"
+                        // Push to destination via root shell.
+                        val r = RootBridge.exec(
+                            "cat " + Sanitize.shellQuote(staged.absolutePath) +
+                            " > " + Sanitize.shellQuote(dest) +
+                            " && chmod 644 " + Sanitize.shellQuote(dest)
+                        )
+                        if (r.code == 0) written.add(safeName)
+                        else errors.add("$safeName: ${r.stderr.ifBlank { "exit ${r.code}" }}")
+                    } catch (e: Exception) {
+                        errors.add("$safeName: ${e.message ?: "failed"}")
+                    } finally {
+                        staged.delete()
+                    }
+                }
+                part.dispose()
+            }
+
+            call.respond(UploadResult(
+                path = dir,
+                written = written,
+                errors = errors,
+                ok = errors.isEmpty() && written.isNotEmpty()
+            ))
+        }
     }
 }
 
@@ -202,4 +271,12 @@ private data class DeviceFileText(
     val path: String,
     val truncated: Boolean,
     val content: String
+)
+
+@Serializable
+private data class UploadResult(
+    val path: String,
+    val written: List<String>,
+    val errors: List<String>,
+    val ok: Boolean
 )

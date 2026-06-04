@@ -2346,6 +2346,29 @@ function initDevfiles() {
             if (row.dataset.dir === '1') dfLoad(row.dataset.path);
             else dfOpenFile(row.dataset.path, row.dataset.name);
         });
+
+        // Upload: button → hidden file input → upload
+        $('#df-upload-btn').addEventListener('click', () => $('#df-upload-input').click());
+        $('#df-upload-input').addEventListener('change', e => {
+            if (e.target.files?.length) dfUpload(e.target.files);
+            e.target.value = '';  // allow re-selecting the same file
+        });
+
+        // Drag & drop onto the file list
+        const dropZone = $('#df-list');
+        ['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.classList.add('df-dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation();
+            if (ev === 'dragleave' && dropZone.contains(e.relatedTarget)) return;
+            dropZone.classList.remove('df-dragover');
+        }));
+        dropZone.addEventListener('drop', e => {
+            const files = e.dataTransfer?.files;
+            if (files?.length) dfUpload(files);
+        });
     });
     dfLoad(dfPath);
 }
@@ -2399,6 +2422,33 @@ async function dfOpenFile(path, name) {
             <div class="df-viewer-head"><code>${fmt.esc(path)}</code>
                 <a class="btn ghost small" href="${dl}">download</a></div>
             <div class="empty small" style="color:var(--red)">Can't preview as text — ${fmt.esc(e.message)}. Use download.</div>`;
+    }
+}
+
+async function dfUpload(fileList) {
+    const files = Array.from(fileList);
+    const form = new FormData();
+    files.forEach(f => form.append('file', f, f.name));
+    const names = files.map(f => f.name).join(', ');
+    toast(`Uploading ${files.length} file${files.length>1?'s':''}…`, 'ok');
+    try {
+        // Don't set Content-Type — the browser sets the multipart boundary.
+        const r = await fetchAuthed(
+            `/api/device/files/upload?path=${encodeURIComponent(dfPath)}`,
+            { method: 'POST', body: form }
+        );
+        if (!r.ok) { throw await explainError(r); }
+        const res = await r.json();
+        if (res.ok) {
+            toast(`Uploaded: ${res.written.join(', ')}`, 'ok');
+        } else if (res.written.length) {
+            toast(`Partial: wrote ${res.written.join(', ')}; failed ${res.errors.join('; ')}`, 'err');
+        } else {
+            toast(`Upload failed: ${res.errors.join('; ') || 'unknown error'}`, 'err');
+        }
+        dfLoad(dfPath);   // refresh listing to show the new files
+    } catch (e) {
+        toast(e.message, 'err');
     }
 }
 
