@@ -1405,7 +1405,7 @@ td.num  { color: var(--cyan); text-align: right; }
 .snap-item-main { display: flex; flex-direction: column; gap: 2px; }
 .snap-ver { font-weight: 600; font-size: 12.5px; color: var(--text); }
 .snap-when { font-size: 11px; color: var(--muted); }
-.snap-del { position: absolute; top: 8px; right: 8px; color: var(--muted); }
+.snap-del { color: var(--muted); }
 .snap-del:hover { color: var(--red); }
 .snap-diff-head { font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
 .snap-diff-sec { margin: 16px 0; }
@@ -1455,3 +1455,5 @@ td.num  { color: var(--cyan); text-align: right; }
 .snap-mf-row.sev-good { border-color: rgba(63,185,80,0.4); background: rgba(63,185,80,0.07); }
 .snap-mf-row.sev-good .snap-mf-icon { color: var(--green, #3fb950); }
 .snap-mf-row.sev-info .snap-mf-icon { color: var(--accent); }
+.snap-item-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.snap-item-actions .snap-del:hover { color: var(--red); }

@@ -150,6 +150,25 @@ class SnapshotManager(private val context: Context) {
     fun delete(pkg: String, id: String): Boolean =
         File(pkgDir(pkg), "$id.json").delete()
 
+    /** Raw JSON of a stored snapshot, for export. */
+    fun exportJson(pkg: String, id: String): String? =
+        File(pkgDir(pkg), "$id.json").let { if (it.isFile) it.readText() else null }
+
+    /**
+     * Import a snapshot from raw JSON (e.g. one previously exported to a
+     * computer). Validates it parses as a Snapshot, then stores it under its
+     * own package dir. If a snapshot with the same id already exists, a new id
+     * is assigned so imports never silently overwrite. Returns the stored id.
+     */
+    fun importJson(rawJson: String): String {
+        val snap = json.decodeFromString(Snapshot.serializer(), rawJson)
+        val target = if (File(pkgDir(snap.packageName), "${snap.id}.json").exists())
+            snap.copy(id = System.currentTimeMillis().toString())
+        else snap
+        persist(target)
+        return target.id
+    }
+
     // ── Diff ─────────────────────────────────────────────────────────────────
 
     fun diff(a: Snapshot, b: Snapshot): SnapshotDiff {

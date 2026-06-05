@@ -382,9 +382,10 @@
                         <button class="btn small" id="snap-capture"><svg class="ic ic-sm"><use href="#i-camera"/></svg>Snapshot now</button>
                         <label class="muted small" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="snap-include-data" checked> include data dir</label>
                         <span class="grow"></span>
-                        <input class="input mono small" id="snap-apk-path" placeholder="/path/to/app.apk" style="width:200px" title="Snapshot an APK file instead of the install">
-                        <input class="input mono small" id="snap-apk-pkg" placeholder="com.pkg" style="width:130px">
-                        <button class="btn ghost small" id="snap-capture-apk">Snapshot APK</button>
+                        <button class="btn ghost small" id="snap-apk-btn" title="Upload an APK from your computer and snapshot it"><svg class="ic ic-sm"><use href="#i-upload"/></svg>Snapshot APK…</button>
+                        <input type="file" id="snap-apk-input" accept=".apk,application/vnd.android.package-archive" hidden>
+                        <button class="btn ghost small" id="snap-import-btn" title="Import a snapshot JSON exported earlier"><svg class="ic ic-sm"><use href="#i-upload"/></svg>Import</button>
+                        <input type="file" id="snap-import-input" accept=".json,application/json" hidden>
                     </div>
                     <div class="toolbar" style="padding-top:0">
                         <span class="muted small">Compare:</span>

@@ -2475,11 +2475,24 @@ let snapList = [];
 function initSnapshots() {
     once('snapshots', () => {
         $('#snap-capture').addEventListener('click', snapCapture);
-        $('#snap-capture-apk').addEventListener('click', snapCaptureApk);
         $('#snap-diff').addEventListener('click', snapRunDiff);
         $('#snap-list').addEventListener('click', e => {
             const del = e.target.closest('.snap-del');
             if (del) { snapDelete(del.dataset.id); return; }
+            const exp = e.target.closest('.snap-export');
+            if (exp) { snapExport(exp.dataset.id); return; }
+        });
+        // Snapshot APK: upload from computer
+        $('#snap-apk-btn').addEventListener('click', () => $('#snap-apk-input').click());
+        $('#snap-apk-input').addEventListener('change', e => {
+            if (e.target.files?.length) snapCaptureApk(e.target.files[0]);
+            e.target.value = '';
+        });
+        // Import snapshot JSON
+        $('#snap-import-btn').addEventListener('click', () => $('#snap-import-input').click());
+        $('#snap-import-input').addEventListener('change', e => {
+            if (e.target.files?.length) snapImport(e.target.files[0]);
+            e.target.value = '';
         });
     });
     snapLoadList();
@@ -2510,7 +2523,10 @@ function renderSnapList() {
                 <span class="snap-when">${new Date(s.createdAt).toLocaleString()}</span>
             </div>
             <div class="muted small">${s.source.startsWith('apk') ? '📦 APK' : '📱 installed'} · ${s.componentCount} comp · ${s.classCount} classes</div>
-            <button class="btn ghost small snap-del" data-id="${fmt.esc(s.id)}" title="Delete snapshot">✕</button>
+            <div class="snap-item-actions">
+                <button class="btn ghost small snap-export" data-id="${fmt.esc(s.id)}" title="Export snapshot to a .json file">export</button>
+                <button class="btn ghost small snap-del" data-id="${fmt.esc(s.id)}" title="Delete snapshot">✕</button>
+            </div>
         </div>`).join('');
 }
 
@@ -2541,20 +2557,46 @@ async function snapCapture() {
     finally { btn.disabled = false; }
 }
 
-async function snapCaptureApk() {
-    const apkPath = $('#snap-apk-path').value.trim();
-    const pkg = $('#snap-apk-pkg').value.trim() || S.pkg;
-    if (!apkPath) { toast('Enter an APK path', 'err'); return; }
-    const btn = $('#snap-capture-apk'); btn.disabled = true;
-    $('#snap-status').textContent = 'capturing APK…';
+async function snapCaptureApk(file) {
+    const pkg = S.pkg;
+    if (!pkg) { toast('Pick an app first (it labels where the snapshot is stored)', 'err'); return; }
+    $('#snap-status').textContent = `uploading ${file.name}…`;
     try {
-        await api.post('/api/snapshots/apk', { apkPath, pkg });
+        const form = new FormData();
+        form.append('file', file, file.name);
+        const r = await fetchAuthed(
+            `/api/snapshots/apk?pkg=${encodeURIComponent(pkg)}`,
+            { method: 'POST', body: form }
+        );
+        if (!r.ok) throw await explainError(r);
+        await r.json();
         toast('APK snapshot captured', 'ok');
         $('#snap-status').textContent = 'snapshot saved';
-        // Reload list for the *current* pkg (apk snapshot is stored under pkg)
-        if (pkg === S.pkg) await snapLoadList();
+        await snapLoadList();
     } catch (e) { toast(e.message, 'err'); $('#snap-status').textContent = ''; }
-    finally { btn.disabled = false; }
+}
+
+function snapExport(id) {
+    // Stream the JSON down via a transient <a download>; the auth cookie rides along.
+    const url = `/api/snapshots/${encodeURIComponent(S.pkg)}/${encodeURIComponent(id)}/export`;
+    const a = document.createElement('a');
+    a.href = url; a.download = `snapshot-${S.pkg}-${id}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Exporting snapshot…', 'ok');
+}
+
+async function snapImport(file) {
+    $('#snap-status').textContent = `importing ${file.name}…`;
+    try {
+        const form = new FormData();
+        form.append('file', file, file.name);
+        const r = await fetchAuthed('/api/snapshots/import', { method: 'POST', body: form });
+        if (!r.ok) throw await explainError(r);
+        await r.json();
+        toast('Snapshot imported', 'ok');
+        $('#snap-status').textContent = 'imported';
+        await snapLoadList();
+    } catch (e) { toast(e.message, 'err'); $('#snap-status').textContent = ''; }
 }
 
 async function snapDelete(id) {
