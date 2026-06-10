@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -2892,9 +2892,110 @@ function webExport() {
     URL.revokeObjectURL(a.href);
 }
 
+// ============== OVERLAY / TAPJACKING tab ==============
+async function initOverlay() {
+    once('overlay', () => {
+        $('#ov-opacity').addEventListener('input', e => {
+            $('#ov-opacity-val').textContent = e.target.value + '%';
+        });
+        $('#ov-launch').addEventListener('click', ovLaunch);
+        $('#ov-show').addEventListener('click', () => ovSendOverlay(false));
+        $('#ov-update').addEventListener('click', () => ovSendOverlay(true));
+        $('#ov-dismiss').addEventListener('click', ovDismiss);
+        $('#ov-perm-open').addEventListener('click', async () => {
+            await api.post('/api/live/exec', {
+                command: `am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION -d package:${S.pkg}`
+            });
+        });
+    });
+    ovCheckPerm();
+    await ovPopulateActivities();
+}
+function refreshOverlay() { ovCheckPerm(); ovPopulateActivities(); }
+
+async function ovCheckPerm() {
+    try {
+        const s = await api.get('/api/overlay/status');
+        const warn = $('#ov-perm-warn');
+        if (!s.canDraw) warn.classList.remove('hidden');
+        else warn.classList.add('hidden');
+    } catch (_) {}
+}
+
+async function ovPopulateActivities() {
+    const sel = $('#ov-activity');
+    if (!S.pkg) { sel.innerHTML = '<option value="">— pick an app first —</option>'; return; }
+    sel.innerHTML = '<option value="">Loading…</option>';
+    try {
+        // Fetch directly — don't rely on S.componentsData being populated by
+        // the Components tab. Both can coexist since the server is stateless.
+        const comps = S.componentsData
+            || await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/components`);
+        const exported = (comps.activities || [])
+            .filter(c => c.exported)
+            .map(c => c.name);
+        sel.innerHTML = exported.length
+            ? exported.map(a => `<option value="${fmt.esc(a)}">${fmt.esc(a)}</option>`).join('')
+            : '<option value="">— no exported activities found —</option>';
+    } catch (e) {
+        sel.innerHTML = '<option value="">— failed to load —</option>';
+        toast(e.message, 'err');
+    }
+}
+
+function ovParams() {
+    return {
+        text:      $('#ov-text').value,
+        x:         parseInt($('#ov-x').value) || 100,
+        y:         parseInt($('#ov-y').value) || 400,
+        widthDp:   parseInt($('#ov-w').value) || 220,
+        heightDp:  parseInt($('#ov-h').value) || 80,
+        bgColor:   $('#ov-bg').value,
+        textColor: $('#ov-fg').value,
+        textSize:  parseFloat($('#ov-textsize').value) || 16,
+        opacity:   parseInt($('#ov-opacity').value) / 100
+    };
+}
+
+async function ovLaunch() {
+    const activity = $('#ov-activity').value;
+    if (!activity) { toast('Pick an activity first', 'err'); return; }
+    const btn = $('#ov-launch'); btn.disabled = true;
+    try {
+        const r = await api.post('/api/overlay/launch', { pkg: S.pkg, activity });
+        const out = [r.stdout, r.stderr].filter(Boolean).join(' ').trim();
+        $('#ov-launch-out').textContent = r.ok
+            ? `✓ launched ${r.target || ''}` + (out ? ' — ' + out : '')
+            : `✗ exit ${r.code}: ${out || 'no output'} (target: ${r.target || activity})`;
+        if (!r.ok) toast(`am start failed (exit ${r.code})`, 'err');
+    } catch (e) { toast(e.message, 'err'); }
+    finally { btn.disabled = false; }
+}
+
+async function ovSendOverlay(isUpdate) {
+    try {
+        await api.post('/api/overlay/show', ovParams());
+        $('#ov-status').textContent = isUpdate ? '✓ overlay updated' : '✓ overlay shown';
+        if (!isUpdate) toast('Overlay shown on device', 'ok');
+        await ovCheckPerm();
+    } catch (e) {
+        const msg = e.message || String(e);
+        $('#ov-status').textContent = '✗ ' + msg;
+        toast(msg, 'err');
+    }
+}
+
+async function ovDismiss() {
+    try {
+        await api.del('/api/overlay');
+        $('#ov-status').textContent = 'overlay dismissed';
+        toast('Overlay dismissed', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

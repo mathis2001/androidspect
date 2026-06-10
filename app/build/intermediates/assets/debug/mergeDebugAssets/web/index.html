@@ -46,6 +46,7 @@
             <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
             <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
             <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+            <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
         </defs>
     </svg>
 
@@ -164,6 +165,7 @@
                 <a class="main-tab tab" data-tab="code"     role="tab"><svg class="ic ic-sm"><use href="#i-file-text"/></svg>Code</a>
                 <a class="main-tab tab" data-tab="deeplinks" role="tab"><svg class="ic ic-sm"><use href="#i-link"/></svg>Deeplinks</a>
                 <a class="main-tab tab" data-tab="web"       role="tab"><svg class="ic ic-sm"><use href="#i-globe"/></svg>Web</a>
+                <a class="main-tab tab" data-tab="overlay"   role="tab"><svg class="ic ic-sm"><use href="#i-layers"/></svg>Overlay</a>
                 <a class="main-tab tab" data-tab="snapshots" role="tab"><svg class="ic ic-sm"><use href="#i-camera"/></svg>Snapshots</a>
             </nav>
 
@@ -375,6 +377,76 @@
                         <span class="muted small" id="dl-status"></span>
                     </div>
                     <div id="dl-body" class="grow-y" style="overflow-y:auto;padding:4px 2px"></div>
+                </section>
+
+                <!-- OVERLAY / TAPJACKING POC -->
+                <section class="panel hidden" data-tab="overlay">
+                    <div id="ov-perm-warn" class="ov-perm-warn hidden">
+                        <strong>⚠ Missing permission</strong> — AndroidSpect needs "Display over other apps".
+                        <button class="btn small" id="ov-perm-open">Open settings</button>
+                    </div>
+                    <div class="ov-layout">
+                        <!-- Left: target activity + launch -->
+                        <div class="ov-col">
+                            <div class="ov-section-h">1. Target activity</div>
+                            <select class="input small" id="ov-activity" style="width:100%"></select>
+                            <button class="btn small" id="ov-launch" style="margin-top:6px;width:100%">▶ Launch activity</button>
+                            <div class="muted small" id="ov-launch-out" style="margin-top:4px"></div>
+
+                            <div class="ov-section-h" style="margin-top:16px">2. Overlay controls</div>
+
+                            <label class="ov-label">Text
+                                <input class="input mono small" id="ov-text" value="Tap here to continue" style="width:100%">
+                            </label>
+                            <div class="ov-row2">
+                                <label class="ov-label">X (px)
+                                    <input class="input small" type="number" id="ov-x" value="100" min="0">
+                                </label>
+                                <label class="ov-label">Y (px)
+                                    <input class="input small" type="number" id="ov-y" value="400" min="0">
+                                </label>
+                            </div>
+                            <div class="ov-row2">
+                                <label class="ov-label">Width (dp)
+                                    <input class="input small" type="number" id="ov-w" value="220" min="40">
+                                </label>
+                                <label class="ov-label">Height (dp)
+                                    <input class="input small" type="number" id="ov-h" value="80" min="20">
+                                </label>
+                            </div>
+                            <div class="ov-row2">
+                                <label class="ov-label">Background
+                                    <input class="input small" type="color" id="ov-bg" value="#cc0000">
+                                </label>
+                                <label class="ov-label">Text color
+                                    <input class="input small" type="color" id="ov-fg" value="#ffffff">
+                                </label>
+                            </div>
+                            <label class="ov-label">Text size (sp)
+                                <input class="input small" type="number" id="ov-textsize" value="16" min="8" max="72">
+                            </label>
+                            <label class="ov-label">
+                                Opacity <span id="ov-opacity-val">85%</span>
+                                <input type="range" id="ov-opacity" min="0" max="100" value="85" style="width:100%">
+                            </label>
+                            <div class="ov-actions">
+                                <button class="btn small" id="ov-show">Show overlay</button>
+                                <button class="btn ghost small" id="ov-update">Update</button>
+                                <button class="btn ghost small danger" id="ov-dismiss">✕ Dismiss</button>
+                            </div>
+                            <div class="muted small" id="ov-status" style="margin-top:6px"></div>
+                        </div>
+
+                        <!-- Right: explanation -->
+                        <div class="ov-col ov-info">
+                            <div class="ov-section-h">About this test</div>
+                            <p class="muted small">This PoC demonstrates <strong>TapJacking</strong>: a visually deceptive overlay drawn over an exported activity tricks users into tapping UI they cannot correctly identify — confirming dialogs, granting permissions, or triggering sensitive actions.</p>
+                            <p class="muted small"><strong>Android 12+ note:</strong> the system forces overlays to be non-touchable when they obscure other windows (so the overlay cannot <em>intercept</em> touches). The overlay here uses <code>FLAG_NOT_TOUCHABLE</code> by design — touches pass through to the victim activity. The attack is <strong>visual deception</strong>, not touch interception, and remains effective on all Android versions.</p>
+                            <p class="muted small">An activity is <strong>vulnerable</strong> if it does not reject touch events delivered while obscured. Set the overlay to near-zero opacity for a stealth PoC, or use a bright color to demonstrate visually in a report.</p>
+                            <div class="ov-section-h" style="margin-top:12px">Remediation</div>
+                            <p class="muted small">On sensitive views, add <code>android:filterTouchesWhenObscured="true"</code> in XML or call <code>view.setFilterTouchesWhenObscured(true)</code> in code. This causes Android to drop touch events flagged with <code>FLAG_WINDOW_IS_OBSCURED</code>, making the attack ineffective regardless of the overlay.</p>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- SNAPSHOTS -->

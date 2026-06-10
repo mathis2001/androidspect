@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-76:12
-INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-76:12
-INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-76:12
-INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-76:12
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-79:12
+INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-79:12
+INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-79:12
+INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:2:1-79:12
 MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/ef5069a16d6a070f1a41ae2fe4738054/transformed/appcompat-resources-1.7.0/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.appcompat:appcompat:1.7.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/fb8ba732eb2fa9aa02c12ae1658eacd2/transformed/appcompat-1.7.0/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.drawerlayout:drawerlayout:1.0.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/6745992358f4debba53134e81862d0b6/transformed/drawerlayout-1.0.0/AndroidManifest.xml:17:1-22:12
@@ -142,17 +142,21 @@ ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:26:5
 		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:27:9-37
 	android:name
 		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:26:22-79
-queries
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:29:5-33:15
-intent#action:name:android.intent.action.MAIN
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:30:9-32:18
-action#android.intent.action.MAIN
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:13-65
+uses-permission#android.permission.SYSTEM_ALERT_WINDOW
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:30:5-78
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:31:21-62
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:30:22-75
+queries
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:32:5-36:15
+intent#action:name:android.intent.action.MAIN
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:33:9-35:18
+action#android.intent.action.MAIN
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:34:13-65
+	android:name
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:34:21-62
 application
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:35:5-74:19
-INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:35:5-74:19
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:38:5-77:19
+INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:38:5-77:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.7.6] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/11213670419dc9dda458323da603356e/transformed/ui-tooling-release/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/dec387c45b419db361007f2c660e483b/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:23:5-33:19
@@ -170,73 +174,73 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/mpais
 	android:extractNativeLibs
 		INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml
 	android:roundIcon
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:41:9-54
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:44:9-54
 	android:largeHeap
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:38:9-33
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:41:9-33
 	android:icon
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:40:9-43
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:43:9-43
 	android:networkSecurityConfig
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:45:9-69
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:48:9-69
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.15.0] /home/mpaisdesousa/.gradle/caches/8.11.1/transforms/5f0759920ebfa61cf604c59470d37d26/transformed/core-1.15.0/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:43:9-35
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:46:9-35
 	android:label
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:42:9-41
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:45:9-41
 	tools:targetApi
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:47:9-29
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:50:9-29
 	android:allowBackup
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:37:9-36
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:40:9-36
 	android:theme
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:44:9-50
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:47:9-50
 	android:dataExtractionRules
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:39:9-65
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:42:9-65
 	android:usesCleartextTraffic
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:46:9-44
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:49:9-44
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:36:9-40
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:39:9-40
 activity#com.androidspect.MainActivity
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:49:9-58:20
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:52:9-61:20
 	android:exported
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:51:13-36
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:54:13-36
 	android:configChanges
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:52:13-113
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:55:13-113
 	android:theme
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:53:13-54
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:56:13-54
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:50:13-41
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:53:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:54:13-57:29
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:57:13-60:29
 category#android.intent.category.LAUNCHER
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:56:17-77
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:59:17-77
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:56:27-74
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:59:27-74
 service#com.androidspect.server.ServerService
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:60:9-63:56
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:63:9-66:56
 	android:exported
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:62:13-37
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:65:13-37
 	android:foregroundServiceType
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:63:13-53
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:66:13-53
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:61:13-49
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:64:13-49
 receiver#com.androidspect.server.BootReceiver
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:65:9-73:20
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:68:9-76:20
 	android:enabled
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:68:13-35
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:71:13-35
 	android:exported
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:67:13-36
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:13-36
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:66:13-48
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:69:13-48
 intent-filter#action:name:android.intent.action.BOOT_COMPLETED+action:name:android.intent.action.QUICKBOOT_POWERON
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:69:13-72:29
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:72:13-75:29
 action#android.intent.action.BOOT_COMPLETED
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:17-79
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:73:17-79
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:70:25-76
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:73:25-76
 action#android.intent.action.QUICKBOOT_POWERON
-ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:71:17-82
+ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:74:17-82
 	android:name
-		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:71:25-79
+		ADDED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml:74:25-79
 uses-sdk
 INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /home/mpaisdesousa/androidspect/app/src/main/AndroidManifest.xml
