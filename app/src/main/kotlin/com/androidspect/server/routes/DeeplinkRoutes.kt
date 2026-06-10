@@ -2,6 +2,7 @@ package com.androidspect.server.routes
 
 import android.content.Context
 import com.androidspect.root.ComponentInspector
+import com.androidspect.root.DeeplinkParamExtractor
 import com.androidspect.root.Sanitize
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -39,6 +40,7 @@ import javax.net.ssl.HttpsURLConnection
 fun Routing.deeplinkRoutes(context: Context) {
 
     val inspector = ComponentInspector(context)
+    val paramExtractor = DeeplinkParamExtractor(context)
 
     route("/api/apps/{pkg}/deeplinks") {
         get {
@@ -116,6 +118,18 @@ fun Routing.deeplinkRoutes(context: Context) {
                 domains = domains.values.toList(),
                 customSchemes = custom.values.toList()
             ))
+        }
+
+        /**
+         * Scan a component's code for the deeplink parameters it reads from the
+         * Uri (query params + path-segment accesses).
+         * GET /api/apps/{pkg}/deeplinks/params?class=<FQCN>
+         */
+        get("/params") {
+            val pkg = call.parameters["pkg"].orEmpty()
+            val cls = call.request.queryParameters["class"]
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "class required"))
+            call.respond(mapOf("params" to paramExtractor.extract(pkg, cls)))
         }
     }
 

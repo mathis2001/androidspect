@@ -80,9 +80,18 @@ class ManifestDecoder(private val context: Context) {
         val cookie = addAssetPath.invoke(assets, apkPath) as Int
         if (cookie == 0) error("addAssetPath failed for $apkPath")
 
+        // Resources bound to this AssetManager so we can resolve @string/... etc.
+        val res: android.content.res.Resources? = runCatching {
+            android.content.res.Resources(
+                assets,
+                context.resources.displayMetrics,
+                context.resources.configuration
+            )
+        }.getOrNull()
+
         val parser: XmlResourceParser = assets.openXmlResourceParser(cookie, "AndroidManifest.xml")
         parser.use { p ->
-            return serialize(p)
+            return serialize(p, res)
         }
     }
 
@@ -90,7 +99,7 @@ class ManifestDecoder(private val context: Context) {
      * Walks the XmlResourceParser event stream and pretty-prints it as XML.
      * Resolves the android: namespace prefix and indents by depth.
      */
-    private fun serialize(p: XmlResourceParser): String {
+    private fun serialize(p: XmlResourceParser, res: android.content.res.Resources?): String {
         val sb = StringBuilder()
         sb.appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
         val androidNs = "http://schemas.android.com/apk/res/android"
@@ -109,7 +118,7 @@ class ManifestDecoder(private val context: Context) {
                             val ns   = p.getAttributeNamespace(i)
                             val name = p.getAttributeName(i)
                             val prefix = if (ns == androidNs) "android:" else ""
-                            val value = readAttr(p, i)
+                            val value = readAttr(p, i, res)
                             if (n == 1) {
                                 sb.append(" $prefix$name=\"${esc(value)}\"")
                             } else {
@@ -135,16 +144,20 @@ class ManifestDecoder(private val context: Context) {
     }
 
     /**
-     * Reads an attribute value, preferring a human-readable form.
-     * Resource references stay as @<hexid>; raw string/int/bool render literally.
+     * Reads an attribute value, resolving resource references (@string/foo) to
+     * their literal value when possible. Unresolved numeric refs ("@2131820742")
+     * are shown as-is in the manifest XML (display only) but note that
+     * ComponentInspector drops them for analysis.
      */
-    private fun readAttr(p: XmlResourceParser, i: Int): String {
-        // getAttributeValue returns the already-stringified value for most
-        // types. For resource references it returns "@<id>" or the raw int,
-        // which is acceptable for display.
+    private fun readAttr(p: XmlResourceParser, i: Int, res: android.content.res.Resources?): String {
+        // Resolve @reference values to their real string via Resources.
+        val resId = p.getAttributeResourceValue(i, 0)
+        if (resId != 0 && res != null) {
+            val resolved = runCatching { res.getString(resId) }.getOrNull()
+            if (!resolved.isNullOrEmpty()) return resolved
+        }
         val raw = p.getAttributeValue(i)
         if (raw != null) return raw
-        // Fallbacks for typed values
         return runCatching { p.getAttributeIntValue(i, -1).toString() }.getOrDefault("")
     }
 

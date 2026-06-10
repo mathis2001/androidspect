@@ -87,6 +87,15 @@ class ComponentInspector(private val context: Context) {
         val cookie = addAssetPath.invoke(assets, apkPath) as Int
         if (cookie == 0) return emptyMap()
 
+        // A Resources bound to this AssetManager lets us resolve attribute
+        // values that are resource references (android:scheme="@string/foo")
+        // into their literal string, instead of leaving a raw "@7f110006".
+        val res: android.content.res.Resources? = runCatching {
+            val metrics = context.resources.displayMetrics
+            val config = context.resources.configuration
+            android.content.res.Resources(assets, metrics, config)
+        }.getOrNull()
+
         val parser = assets.openXmlResourceParser(cookie, "AndroidManifest.xml")
         val androidNs = "http://schemas.android.com/apk/res/android"
         val result = HashMap<String, MutableList<IntentFilter>>()
@@ -100,7 +109,19 @@ class ComponentInspector(private val context: Context) {
                 for (i in 0 until p.attributeCount) {
                     if (p.getAttributeName(i) == name &&
                         (p.getAttributeNamespace(i) == androidNs || p.getAttributeNamespace(i).isEmpty())) {
-                        return p.getAttributeValue(i)
+                        // If the attribute is a resource reference (@string/foo),
+                        // getAttributeResourceValue returns its non-zero id; resolve
+                        // it to the literal string via Resources.
+                        val resId = p.getAttributeResourceValue(i, 0)
+                        if (resId != 0 && res != null) {
+                            val resolved = runCatching { res.getString(resId) }.getOrNull()
+                            if (!resolved.isNullOrEmpty()) return resolved
+                        }
+                        val raw = p.getAttributeValue(i) ?: return null
+                        // Drop still-unresolved numeric references like "@2131820742"
+                        // so they don't poison analysis with fake scheme/host values.
+                        if (raw.startsWith("@") && raw.drop(1).all { it.isDigit() }) return null
+                        return raw
                     }
                 }
                 return null

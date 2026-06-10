@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -2115,6 +2115,8 @@ function initDeeplinks() {
                 await dlLaunch(uri, lb);
                 return;
             }
+            const sp = e.target.closest('.dl-scan-params');
+            if (sp) { await dlScanParams(sp.dataset.class, sp); return; }
         });
     });
     loadDeeplinks(false);
@@ -2179,6 +2181,10 @@ function renderDeeplinks() {
             </div>
             <div class="muted small">via ${fmt.esc(dom.component)}</div>
             ${!dom.autoVerify ? `<div class="dl-warn small">⚠ This domain is declared as a web link but the intent-filter is <strong>not</strong> marked <code>android:autoVerify="true"</code> — Android will show a disambiguation dialog instead of opening the app directly, and App Links verification won't run automatically.</div>` : ''}
+            <div class="dl-params">
+                <button class="btn ghost small dl-scan-params" data-class="${fmt.esc(dom.component)}"><svg class="ic ic-sm"><use href="#i-search"/></svg>Scan params</button>
+                <div class="dl-params-result"></div>
+            </div>
             <div class="dl-verify-result" data-for="${fmt.esc(dom.host)}"></div>
         </div>`;
     }).join('') : `<div class="empty small">No http/https App Link domains declared in the manifest. The app may still use custom-scheme deeplinks (see the Components tab).</div>`;
@@ -2222,6 +2228,10 @@ function renderDeeplinks() {
                         <div class="dl-poc-cmd">
                             <code class="dl-cmd-text" id="${'pocc_' + Math.random().toString(36).slice(2,8)}">${fmt.esc(cmd)}</code>
                             <button class="btn ghost small dl-cmd-copy" data-cmd="${fmt.esc(cmd)}">copy</button>
+                        </div>
+                        <div class="dl-params">
+                            <button class="btn ghost small dl-scan-params" data-class="${fmt.esc(s.component)}"><svg class="ic ic-sm"><use href="#i-search"/></svg>Scan params</button>
+                            <div class="dl-params-result"></div>
                         </div>
                     </div>`;
                 }).join('')}
@@ -2321,6 +2331,35 @@ async function dlLaunch(uri, btn) {
         toast(e.message, 'err');
     } finally {
         btn.disabled = false; btn.textContent = orig;
+    }
+}
+
+async function dlScanParams(cls, btn) {
+    const box = btn.parentElement.querySelector('.dl-params-result');
+    const orig = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = 'Scanning code…';
+    if (box) box.innerHTML = '';
+    try {
+        const r = await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/deeplinks/params?class=${encodeURIComponent(cls)}`);
+        const params = r.params || [];
+        if (!params.length) {
+            box.innerHTML = '<div class="muted small">No literal Uri parameters found in this component (it may parse the Uri dynamically).</div>';
+        } else {
+            const q = params.filter(p => p.kind === 'query' || p.kind === 'query-all');
+            const pth = params.filter(p => p.kind === 'path');
+            box.innerHTML = `
+                ${q.length ? `<div class="dl-params-group"><div class="dl-params-h">query parameters</div>${q.map(p =>
+                    p.kind === 'query-all'
+                        ? `<span class="dl-param-pill all">${fmt.esc(p.name)}</span>`
+                        : `<span class="dl-param-pill">${fmt.esc(p.name)}</span>`).join('')}</div>` : ''}
+                ${pth.length ? `<div class="dl-params-group"><div class="dl-params-h">path access</div>${pth.map(p =>
+                    `<span class="dl-param-pill path">${fmt.esc(p.name)}</span>`).join('')}</div>` : ''}
+            `;
+        }
+        btn.style.display = 'none';
+    } catch (e) {
+        box.innerHTML = `<div class="dl-warn small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+        btn.disabled = false; btn.innerHTML = orig;
     }
 }
 
@@ -2722,9 +2761,140 @@ function renderSnapDiff(d) {
     $('#snap-diff-view').innerHTML = header + manifestSec + perms + comps + deeplinks + native + code + data;
 }
 
+// ============== WEB tab ==============
+let webData = null;
+
+function initWeb() {
+    once('web', () => {
+        $('#web-scan').addEventListener('click', () => webScan());
+        $('#web-filter').addEventListener('input', renderWeb);
+        $('#web-export').addEventListener('click', webExport);
+        $('#web-hide-boilerplate').addEventListener('click', e => {
+            const on = e.currentTarget.getAttribute('aria-pressed') === 'true';
+            e.currentTarget.setAttribute('aria-pressed', on ? 'false' : 'true');
+            renderWeb();
+        });
+    });
+    // Don't auto-scan (full-DEX walk is heavy); wait for the button.
+    if (webData && webData._pkg === S.pkg) renderWeb();
+    else $('#web-body').innerHTML = '<div class="empty">Click “Scan” to extract URLs, endpoints and parameters from this app.</div>';
+}
+function refreshWeb() {
+    if (webData && webData._pkg === S.pkg) renderWeb();
+    else $('#web-body').innerHTML = '<div class="empty">Click “Scan” to extract URLs, endpoints and parameters.</div>';
+}
+
+async function webScan() {
+    if (!S.pkg) { toast('Pick an app first', 'err'); return; }
+    const btn = $('#web-scan'); btn.disabled = true;
+    $('#web-status').textContent = 'scanning code…';
+    $('#web-body').innerHTML = '<div class="empty small">Walking the DEX — this can take a moment on large apps…</div>';
+    try {
+        const d = await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/web`);
+        d._pkg = S.pkg;
+        webData = d;
+        $('#web-status').textContent = `${d.urls.length} URLs · ${d.endpoints.length} endpoints · ${d.params.length} params`;
+        renderWeb();
+    } catch (e) {
+        $('#web-status').textContent = '';
+        $('#web-body').innerHTML = `<div class="empty small" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+    } finally { btn.disabled = false; }
+}
+
+function renderWeb() {
+    if (!webData) return;
+    const q = ($('#web-filter')?.value || '').trim().toLowerCase();
+    const match = s => !q || s.toLowerCase().includes(q);
+    const hideBoilerplate = $('#web-hide-boilerplate')?.getAttribute('aria-pressed') === 'true';
+
+    let urls = webData.urls.filter(u => match(u.url));
+    if (hideBoilerplate) urls = urls.filter(u => !webIsBoilerplate(u.url));
+    const endpoints = webData.endpoints.filter(e => match(e.path) || e.params.some(match));
+    const params = webData.params.filter(match);
+
+    const srcBadges = sources => (sources || []).map(s =>
+        `<span class="web-src web-src-${s.replace(/[^a-z0-9]/gi,'')}">${fmt.esc(s)}</span>`).join('');
+
+    const urlRows = urls.length ? urls.map(u => `
+        <div class="web-row">
+            <a class="web-url" href="${fmt.esc(u.url)}" target="_blank" rel="noopener">${fmt.esc(u.url)}</a>
+            ${srcBadges(u.sources)}
+            <button class="btn ghost small web-copy" data-copy="${fmt.esc(u.url)}">copy</button>
+        </div>`).join('') : '<div class="empty small">none</div>';
+
+    const epRows = endpoints.length ? endpoints.map(e => `
+        <div class="web-row">
+            <code class="web-ep">${fmt.esc(e.path)}</code>
+            ${e.params.length ? `<span class="web-ep-params">${e.params.map(p=>`<span class="web-pill">${fmt.esc(p)}</span>`).join('')}</span>` : ''}
+            ${srcBadges(e.sources)}
+            <button class="btn ghost small web-copy" data-copy="${fmt.esc(e.path)}" style="margin-left:auto">copy</button>
+        </div>`).join('') : '<div class="empty small">none</div>';
+
+    const paramPills = params.length
+        ? `<div class="web-params">${params.map(p=>`<span class="web-pill">${fmt.esc(p)}</span>`).join('')}</div>`
+        : '<div class="empty small">none</div>';
+
+    $('#web-body').innerHTML = `
+        <div class="web-sec">
+            <div class="web-sec-h">URLs <span class="count">${urls.length}</span></div>
+            ${urlRows}
+        </div>
+        <div class="web-sec">
+            <div class="web-sec-h">Potential API endpoints <span class="count">${endpoints.length}</span></div>
+            ${epRows}
+        </div>
+        <div class="web-sec">
+            <div class="web-sec-h">Potential parameters <span class="count">${params.length}</span></div>
+            ${paramPills}
+        </div>`;
+
+    $$('.web-copy', $('#web-body')).forEach(b => b.onclick = () => {
+        navigator.clipboard?.writeText(b.dataset.copy).then(
+            () => toast('Copied', 'ok'), () => toast('Copy failed', 'err'));
+    });
+}
+
+// Mirrors WebExtractor.isBoilerplateHost — hosts that are XML namespaces,
+// schema/spec references, or doc placeholders, never a real endpoint.
+const WEB_BOILERPLATE_HOSTS = new Set([
+    'www.w3.org','w3.org','schemas.android.com','ns.adobe.com',
+    'xmlpull.org','www.xmlpull.org','xml.org','www.xml.org',
+    'java.sun.com','sun.com','aomedia.org','www.aomedia.org',
+    'iptc.org','www.iptc.org','purl.org','www.example.com',
+    'example.com','example.org','example.net','schema.org','www.schema.org',
+    'apache.org','www.apache.org','xml.apache.org','relaxng.org','docbook.org'
+]);
+function webIsBoilerplate(url) {
+    let host;
+    try {
+        host = new URL(url).hostname.toLowerCase();
+    } catch {
+        host = (url.split('://')[1] || '').split('/')[0].split('?')[0].split('@').pop().split(':')[0].toLowerCase();
+    }
+    if (!host) return false;
+    if (WEB_BOILERPLATE_HOSTS.has(host)) return true;
+    if (host.startsWith('schemas.') || host.startsWith('ns.') || host.startsWith('xmlns.')) return true;
+    if (host.endsWith('.w3.org')) return true;
+    if (host === 'example.com' || host.endsWith('.example.com') || host.endsWith('.example')) return true;
+    return false;
+}
+
+function webExport() {
+    if (!webData || !webData.urls.length) { toast('Nothing to export — scan first', 'err'); return; }
+    const hideBoilerplate = $('#web-hide-boilerplate')?.getAttribute('aria-pressed') === 'true';
+    let list = webData.urls;
+    if (hideBoilerplate) list = list.filter(u => !webIsBoilerplate(u.url));
+    const blob = new Blob([list.map(u => u.url).join('\n')], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${S.pkg}-urls.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
