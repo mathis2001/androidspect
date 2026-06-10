@@ -22,6 +22,10 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.http.content.streamProvider
+import io.ktor.server.request.receiveMultipart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -98,6 +102,63 @@ fun Routing.decompilerRoutes(context: Context) {
 
         get("/jobs") {
             call.respond(DecompileJob.all().map { it.toSummary() })
+        }
+
+        /**
+         * Import JADX output (a ZIP of .java files) as a completed job.
+         *
+         * POST /api/decompiler/jadx?label=MyApp   (multipart/form-data, one file part)
+         *
+         * The ZIP is extracted into a new job's outputDir and the job is
+         * immediately marked DONE — so the existing tree/file/search/download
+         * routes work unchanged against Java sources instead of Smali.
+         *
+         * Expected ZIP structure (JADX defaults):
+         *   sources/com/example/MainActivity.java
+         *   sources/com/example/...
+         * or a flat:
+         *   com/example/MainActivity.java
+         * Both are accepted; a top-level "sources/" prefix is stripped so the
+         * tree root shows the package directories directly.
+         */
+        post("/jadx") {
+            val label = call.request.queryParameters["label"]?.takeIf { it.isNotBlank() }
+                ?: "JADX import"
+            var staged: File? = null
+            val multipart = call.receiveMultipart()
+            multipart.forEachPart { part ->
+                if (part is PartData.FileItem && staged == null) {
+                    val f = File(workDir, "jadx_upload_${System.nanoTime()}.zip")
+                    part.streamProvider().use { i -> f.outputStream().use { o -> i.copyTo(o) } }
+                    staged = f
+                }
+                part.dispose()
+            }
+            val zip = staged
+                ?: return@post call.respond(HttpStatusCode.BadRequest,
+                    mapOf("error" to "No ZIP file in upload"))
+
+            val job = DecompileJob.createJadx(label, workDir)
+            DecompileJob.register(job)
+            job.status    = JobStatus.RUNNING
+            job.startedAt = System.currentTimeMillis()
+            job.outputDir.mkdirs()
+            job.persist()
+
+            try {
+                withContext(Dispatchers.IO) { extractJadxZip(zip, job.outputDir) }
+                job.status    = JobStatus.DONE
+                job.progress  = 100
+                job.message   = "Imported from JADX ZIP."
+                job.finishedAt = System.currentTimeMillis()
+            } catch (e: Exception) {
+                job.status  = JobStatus.ERROR
+                job.message = e.message ?: "Extraction failed"
+            } finally {
+                zip.delete()
+                job.persist()
+            }
+            call.respond(HttpStatusCode.Created, job.toSummary())
         }
 
         route("/jobs/{id}") {
@@ -215,6 +276,7 @@ class DecompileJob private constructor(
     val label:     String,
     val apkPath:   String,
     val outputDir: File,
+    val source:    String = "baksmali",   // "baksmali" | "jadx"
 ) {
     var status:     JobStatus = JobStatus.PENDING; internal set
     var progress:   Int       = 0;                 internal set
@@ -229,7 +291,7 @@ class DecompileJob private constructor(
     internal fun persist() {
         runCatching {
             metaFile.writeText(listOf(id, label, apkPath, outputDir.absolutePath,
-                status.name, progress, startedAt, finishedAt, message).joinToString("\t"))
+                status.name, progress, startedAt, finishedAt, source, message).joinToString("\t"))
         }
     }
 
@@ -332,16 +394,21 @@ class DecompileJob private constructor(
         metaFile.delete()
     }
 
-    fun toSummary() = JobSummary(id, label, status.name, progress, apkPath)
+    fun toSummary() = JobSummary(id, label, status.name, progress, apkPath, source)
     fun toDetail()  = JobDetail(id, label, status.name, progress, message, apkPath,
-                                outputDir.absolutePath, startedAt, finishedAt)
+                                outputDir.absolutePath, startedAt, finishedAt, source)
 
     companion object {
         private val registry = ConcurrentHashMap<String, DecompileJob>()
 
         fun create(label: String, apkPath: String, workDir: File): DecompileJob {
             val id = UUID.randomUUID().toString()
-            return DecompileJob(id, label, apkPath, File(workDir, id))
+            return DecompileJob(id, label, apkPath, File(workDir, id), "baksmali")
+        }
+
+        fun createJadx(label: String, workDir: File): DecompileJob {
+            val id = UUID.randomUUID().toString()
+            return DecompileJob(id, label, "", File(workDir, id), "jadx")
         }
 
         fun register(job: DecompileJob) { registry[job.id] = job }
@@ -354,12 +421,17 @@ class DecompileJob private constructor(
                 runCatching {
                     val p = meta.readText().split("\t")
                     if (p.size < 9) return@runCatching
-                    val job = DecompileJob(p[0], p[1], p[2], File(p[3])).also {
+                    // Old format: 9 fields (…finishedAt, message)
+                    // New format: 10 fields (…finishedAt, source, message)
+                    val hasSource = p.size >= 10
+                    val src     = if (hasSource) p[8] else "baksmali"
+                    val msg     = if (hasSource) p.drop(9).joinToString("\t") else p.drop(8).joinToString("\t")
+                    val job = DecompileJob(p[0], p[1], p[2], File(p[3]), src).also {
                         it.status     = runCatching { JobStatus.valueOf(p[4]) }.getOrDefault(JobStatus.ERROR)
                         it.progress   = p[5].toIntOrNull() ?: 0
                         it.startedAt  = p[6].toLongOrNull() ?: 0L
                         it.finishedAt = p[7].toLongOrNull() ?: 0L
-                        it.message    = p.drop(8).joinToString("\t")
+                        it.message    = msg
                     }
                     if (job.status == JobStatus.RUNNING || job.status == JobStatus.PENDING) {
                         job.status  = JobStatus.ERROR
@@ -405,6 +477,29 @@ private fun zipDir(dir: File, prefix: String, zip: java.util.zip.ZipOutputStream
     }
 }
 
+/**
+ * Extract a JADX output ZIP into [dest], stripping a top-level "sources/"
+ * prefix that JADX adds by default, so the tree root is the package dir.
+ * Skips directory entries and path-traversal attempts.
+ */
+private fun extractJadxZip(zip: File, dest: File) {
+    ZipFile(zip).use { zf ->
+        zf.entries().asSequence().forEach { entry ->
+            if (entry.isDirectory) return@forEach
+            // Strip leading "sources/" prefix if present.
+            val rel = entry.name
+                .trimStart('/')
+                .removePrefix("sources/")
+                .trimStart('/')
+            // Skip path-traversal attempts.
+            if (rel.contains("..")) return@forEach
+            val out = File(dest, rel)
+            out.parentFile?.mkdirs()
+            zf.getInputStream(entry).use { i -> out.outputStream().use { o -> i.copyTo(o) } }
+        }
+    }
+}
+
 private fun grepDir(dir: File, pattern: String, ext: String?,
                     ignoreCase: Boolean, limit: Int): List<SearchHit> {
     val cmd = mutableListOf("grep", "-rnE")
@@ -440,8 +535,8 @@ private fun languageFor(name: String) =
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
 @Serializable private data class StartJobRequest(val pkg: String? = null, val apkPath: String? = null)
-@Serializable data class JobSummary(val id: String, val label: String, val status: String, val progress: Int, val apkPath: String)
-@Serializable data class JobDetail(val id: String, val label: String, val status: String, val progress: Int, val message: String, val apkPath: String, val outputDir: String, val startedAt: Long, val finishedAt: Long)
+@Serializable data class JobSummary(val id: String, val label: String, val status: String, val progress: Int, val apkPath: String, val source: String = "baksmali")
+@Serializable data class JobDetail(val id: String, val label: String, val status: String, val progress: Int, val message: String, val apkPath: String, val outputDir: String, val startedAt: Long, val finishedAt: Long, val source: String = "baksmali")
 @Serializable data class TreeNode(val name: String, val path: String, val type: String, val size: Long?, val language: String?, val children: List<TreeNode>?)
 @Serializable private data class FileContent(val path: String, val content: String, val language: String, val size: Long)
 @Serializable private data class SearchHit(val path: String, val line: Int, val text: String)

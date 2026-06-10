@@ -1543,6 +1543,42 @@ function initCode() {
         $('#code-zip-btn').addEventListener('click', () => {
             if (codeJobId) window.location.href = `/api/decompiler/jobs/${codeJobId}/zip`;
         });
+
+        // JADX import — upload a ZIP of decompiled Java sources from the workstation.
+        $('#code-jadx-btn').addEventListener('click', () => $('#code-jadx-input').click());
+        $('#code-jadx-input').addEventListener('change', async e => {
+            const file = e.target.files?.[0]; if (!file) return;
+            e.target.value = '';
+            const label = (S.appInfo?.name || S.pkg || 'app') + ' (JADX)';
+            $('#code-status').textContent = `Uploading ${file.name}…`;
+            $('#code-jadx-btn').disabled = true;
+            try {
+                const form = new FormData();
+                form.append('file', file, file.name);
+                const r = await fetchAuthed(
+                    `/api/decompiler/jadx?label=${encodeURIComponent(label)}`,
+                    { method: 'POST', body: form }
+                );
+                if (!r.ok) throw await explainError(r);
+                const job = await r.json();
+                codeJobId = job.id;
+                codeOpenTabs = []; codeTabIdx = -1;
+                renderCodeTabs();
+                await codeRefreshJobList();
+                if (job.status === 'DONE') {
+                    $('#code-status').textContent = '';
+                    $('#code-zip-btn').disabled = false;
+                    await codeLoadTree(job.id);
+                } else {
+                    $('#code-status').textContent = '✗ ' + (job.message || 'import failed');
+                }
+            } catch (e) {
+                toast(e.message, 'err');
+                $('#code-status').textContent = '';
+            } finally {
+                $('#code-jadx-btn').disabled = false;
+            }
+        });
     });
 
     codeRefreshJobList();
@@ -1562,6 +1598,7 @@ async function codeRefreshJobList() {
             <div class="code-job-item ${j.id === codeJobId ? 'active' : ''}"
                  data-id="${fmt.esc(j.id)}" title="${fmt.esc(j.apkPath)}">
                 <span class="job-name">${fmt.esc(j.label)}</span>
+                <span class="code-job-src ${j.source === 'jadx' ? 'jadx' : 'smali'}">${j.source === 'jadx' ? 'java' : 'smali'}</span>
                 <span class="code-job-badge ${j.status.toLowerCase()}">${j.status}</span>
             </div>`).join('');
         list.querySelectorAll('.code-job-item').forEach(row => {

@@ -337,6 +337,8 @@
                 <section class="panel hidden" data-tab="code">
                     <div class="toolbar">
                         <button class="btn small" id="code-decompile" title="Disassemble the selected app to Smali"><svg class="ic ic-sm"><use href="#i-file-text"/></svg>Decompile</button>
+                        <button class="btn ghost small" id="code-jadx-btn" title="Import JADX output ZIP (Java sources decompiled on your workstation)"><svg class="ic ic-sm"><use href="#i-upload"/></svg>Import JADX</button>
+                        <input type="file" id="code-jadx-input" accept=".zip,application/zip" hidden>
                         <button class="btn ghost small" id="code-jobs-refresh" title="Refresh job list"><svg class="ic ic-sm"><use href="#i-refresh"/></svg></button>
                         <span class="breadcrumb" id="code-crumb"></span>
                         <span class="muted small" id="code-status"></span>
