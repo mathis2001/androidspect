@@ -2328,7 +2328,7 @@ function renderAssetlinks(r) {
     if (auth === true) {
         authLine = `<div class="dl-auth small dl-auth-ok">✓ Authorizes this app${r.authDetail ? ' — ' + fmt.esc(r.authDetail) : ''}</div>`;
     } else if (auth === false) {
-        authLine = `<div class="dl-auth small dl-auth-bad">✗ Does not authorize this app${r.authDetail ? ' — ' + fmt.esc(r.authDetail) : ''}</div>`;
+        authLine = `<div class="dl-auth small dl-auth-bad" style="white-space:pre-wrap">✗ Does not authorize this app${r.authDetail ? '\n' + fmt.esc(r.authDetail) : ''}</div>`;
     } else if (r.authDetail) {
         authLine = `<div class="dl-auth small muted">${fmt.esc(r.authDetail)}</div>`;
     }

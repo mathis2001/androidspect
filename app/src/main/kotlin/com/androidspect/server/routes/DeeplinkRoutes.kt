@@ -209,17 +209,31 @@ private fun fetchAndValidate(domain: String, pkg: String?, fp: String?): Assetli
         var authorizesApp: Boolean? = null
         var authDetail: String? = null
         if (pkg != null) {
+            // Normalise both sides: uppercase, strip colons for comparison.
+            val fpNorm = fp?.uppercase()?.replace(":", "")
             val match = statements.firstOrNull { st ->
                 st.namespace == "android_app" &&
                 st.packageName == pkg &&
-                (fp == null || st.sha256Fingerprints.any { it.replace(":", "") == fp.replace(":", "") })
+                (fpNorm == null || st.sha256Fingerprints.any {
+                    it.uppercase().replace(":", "") == fpNorm
+                })
             }
             authorizesApp = match != null
             authDetail = when {
-                match != null && fp != null -> "Statement found for $pkg with a matching SHA-256 fingerprint."
-                match != null               -> "Statement found for $pkg (fingerprint not checked — none supplied)."
-                statements.any { it.packageName == pkg } && fp != null ->
-                    "A statement names $pkg but none list the supplied fingerprint — App Links verification would FAIL."
+                match != null && fp != null ->
+                    "Statement found for $pkg with a matching SHA-256 fingerprint."
+                match != null ->
+                    "Statement found for $pkg (fingerprint not checked — none supplied)."
+                statements.any { it.packageName == pkg } && fpNorm != null -> {
+                    // Show both fingerprints to help debug mismatches.
+                    val listed = statements
+                        .filter { it.packageName == pkg }
+                        .flatMap { it.sha256Fingerprints }
+                        .joinToString(", ")
+                    "Package $pkg found but fingerprint mismatch.\n" +
+                    "  App cert:  $fp\n" +
+                    "  Listed:    $listed"
+                }
                 else -> "No statement authorises $pkg — App Links verification would FAIL."
             }
         }
@@ -243,17 +257,25 @@ private fun fetchAndValidate(domain: String, pkg: String?, fp: String?): Assetli
     }
 }
 
-/** Returns the app's signing certificate SHA-256 fingerprint as AA:BB:… */
+/** Returns the app's signing certificate SHA-256 fingerprints (all certs in lineage). */
 private fun signingSha256(context: Context, pkg: String): String? {
     return try {
         val pm = context.packageManager
-        @Suppress("DEPRECATION", "PackageManagerGetSignatures")
-        val flags = android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-        val info = pm.getPackageInfo(pkg, flags)
-        val signers = info.signingInfo?.apkContentsSigners ?: return null
-        val cert = signers.firstOrNull()?.toByteArray() ?: return null
-        val md = MessageDigest.getInstance("SHA-256").digest(cert)
-        md.joinToString(":") { "%02X".format(it) }
+        // GET_SIGNING_CERTIFICATES (API 28+) returns the full lineage.
+        val info = runCatching {
+            pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+        }.getOrNull() ?: run {
+            // Fallback for older API: GET_SIGNATURES (deprecated but works everywhere).
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SIGNATURES)
+        }
+        val signers = info.signingInfo?.apkContentsSigners
+            ?: @Suppress("DEPRECATION") info.signatures
+            ?: return null
+        // Return the most recent signer's fingerprint (last in lineage = current key).
+        val cert = signers.lastOrNull()?.toByteArray() ?: return null
+        MessageDigest.getInstance("SHA-256").digest(cert)
+            .joinToString(":") { "%02X".format(it) }
     } catch (e: Exception) {
         null
     }

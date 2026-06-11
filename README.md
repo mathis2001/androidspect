@@ -18,7 +18,7 @@ Per-package static inspection and dynamic tests:
 * Import Decompiled code from `JadX` for in-app static analysis.
 * Verify deeplinks assetlinks.
 * Extract and open deeplinks (+ potential parameters if static).
-* Extract Web related information (URL, potential endpoints and potential parameters).
+* Extract Web related information (WebViews security assessment, URL, potential endpoints and potential parameters).
 * PoC Overlay Attacks.
 * A markdown editor to take notes directly through the web interface.
 * A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring).
@@ -181,7 +181,7 @@ File Explorer
 
 Pentesting environment management
 
-![EnvSetup](screenshots/16-Env-Setup.PNG)
+![EnvSetup](screenshots/17-Env-Setup.PNG)
 
 ## Security model
 
