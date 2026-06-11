@@ -1,6 +1,6 @@
 # AndroidSpect
 
-Runtime audit tool for installed Android apps. Runs on a rooted phone, exposes an HTTPS dashboard from the device, and lets you browse any app's private storage from any browser on your network.
+Swissknife Applicative Android Pentesting app that act like a C2 and embed a web server accessible through a browser on the same network. The app allows multiple generic actions like global proxy, frida-server management, processes monitoring and per-package static and dynamic analysis of installed apps.
 
 ## What it does
 
