@@ -2871,7 +2871,31 @@ function renderWeb() {
         ? `<div class="web-params">${params.map(p=>`<span class="web-pill">${fmt.esc(p)}</span>`).join('')}</div>`
         : '<div class="empty small">none</div>';
 
+    // WebView security findings
+    const wvFindings = (webData.webviews || []);
+    const sevColor = { HIGH: 'red', MEDIUM: 'orange', LOW: 'blue', INFO: 'muted' };
+    const wvRows = wvFindings.length ? wvFindings.map(f => {
+        const argBadge = f.argument != null
+            ? `<span class="web-pill ${f.argument === 'true' ? 'pill-danger' : 'pill-safe'}">${fmt.esc(f.argument)}</span>`
+            : '';
+        const sev = f.severity || 'INFO';
+        const desc = WV_DESCRIPTIONS[f.method] || '';
+        return `<div class="wv-row wv-${sev.toLowerCase()}">
+            <span class="wv-sev sev-${sev.toLowerCase()}">${sev}</span>
+            <div class="wv-detail">
+                <code class="wv-method">${fmt.esc(f.method)}(${f.argument != null ? fmt.esc(f.argument) : '…'})</code>
+                ${argBadge}
+                <span class="wv-class muted small">${fmt.esc(f.callerClass)}</span>
+                ${desc ? `<div class="wv-desc muted small">${fmt.esc(desc)}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('') : '<div class="empty small">No sensitive WebView API calls detected.</div>';
+
     $('#web-body').innerHTML = `
+        <div class="web-sec">
+            <div class="web-sec-h">WebView Security <span class="count">${wvFindings.length}</span></div>
+            ${wvRows}
+        </div>
         <div class="web-sec">
             <div class="web-sec-h">URLs <span class="count">${urls.length}</span></div>
             ${urlRows}
@@ -2890,6 +2914,16 @@ function renderWeb() {
             () => toast('Copied', 'ok'), () => toast('Copy failed', 'err'));
     });
 }
+
+const WV_DESCRIPTIONS = {
+    setJavaScriptEnabled:               'Enables JavaScript execution in the WebView. Required for XSS attacks if content is not properly sanitised.',
+    setAllowUniversalAccessFromFileURLs:'Allows file:// URLs to access content from any origin. Critical risk — enables full local file read from JS.',
+    setAllowFileAccessFromFileURLs:     'Allows file:// URLs to access other file:// URLs. Enables local file theft via crafted HTML.',
+    setAllowFileAccess:                 'Allows WebView to access the device file system via file:// URIs.',
+    setWebContentsDebuggingEnabled:     'Enables Chrome DevTools remote debugging of this WebView. Should never be true in production.',
+    setAllowContentAccess:              'Allows access to content:// URIs (ContentProvider). May expose internal app data.',
+    addJavascriptInterface:             'Exposes a Java object to JavaScript. If JS is enabled and input is not sanitised, attackers can call arbitrary Java methods.'
+};
 
 // Mirrors WebExtractor.isBoilerplateHost — hosts that are XML namespaces,
 // schema/spec references, or doc placeholders, never a real endpoint.

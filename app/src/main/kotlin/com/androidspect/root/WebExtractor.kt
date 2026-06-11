@@ -33,22 +33,34 @@ class WebExtractor(private val context: Context) {
     // the set of sources each was seen in, so the same value found in code AND
     // a config file is tagged with both.
     private class Acc {
-        val urls = HashMap<String, MutableSet<String>>()       // url -> sources
-        val endpoints = HashMap<String, EndpointAcc>()          // path -> {params, sources}
+        val urls = HashMap<String, MutableSet<String>>()
+        val endpoints = HashMap<String, EndpointAcc>()
         val params = sortedSetOf<String>()
+        // WebView findings keyed by "ClassName#method" -> WebViewFinding
+        val webviews = LinkedHashMap<String, WebViewFinding>()
         fun addUrl(u: String, src: String) { urls.getOrPut(u) { sortedSetOf() }.add(src) }
         fun addEndpoint(path: String, src: String, qs: List<String>) {
             val e = endpoints.getOrPut(path) { EndpointAcc() }
             e.sources.add(src); e.params.addAll(qs); params.addAll(qs)
         }
         fun addParam(p: String) { params.add(p) }
+        fun addWebView(cls: String, method: String, arg: String?, definingClass: String) {
+            val key = "$cls#$method"
+            webviews.putIfAbsent(key, WebViewFinding(
+                callerClass = cls,
+                method      = method,
+                argument    = arg,
+                definingClass = definingClass,
+                severity    = webViewSeverity(method, arg)
+            ))
+        }
     }
     private class EndpointAcc { val params = sortedSetOf<String>(); val sources = sortedSetOf<String>() }
 
     suspend fun extract(packageName: String): WebReport = withContext(Dispatchers.IO) {
         val ai = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
-            ?: return@withContext WebReport(packageName, emptyList(), emptyList(), emptyList())
-        val apkPath = ai.sourceDir ?: return@withContext WebReport(packageName, emptyList(), emptyList(), emptyList())
+            ?: return@withContext WebReport(packageName, emptyList(), emptyList(), emptyList(), emptyList())
+        val apkPath = ai.sourceDir ?: return@withContext WebReport(packageName, emptyList(), emptyList(), emptyList(), emptyList())
 
         val acc = Acc()
 
@@ -83,6 +95,19 @@ class WebExtractor(private val context: Context) {
         // network_security_config domains (resolved via the manifest)
         runCatching { scanNetworkSecurityConfig(packageName, apkPath, acc) }
 
+        // WebView security analysis
+        val webviewAcc = LinkedHashMap<String, WebViewFinding>()
+        ZipFile(apkPath).use { zip ->
+            zip.entries().asSequence().filter { it.name.endsWith(".dex") }.forEach { entry ->
+                val tmp = File.createTempFile("wv_", ".dex", context.cacheDir)
+                try {
+                    zip.getInputStream(entry).use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                    val dex = DexFileFactory.loadDexFile(tmp, Opcodes.getDefault())
+                    scanWebViews(dex, webviewAcc)
+                } catch (_: Exception) {} finally { tmp.delete() }
+            }
+        }
+
         WebReport(
             packageName = packageName,
             urls = acc.urls.entries
@@ -91,7 +116,9 @@ class WebExtractor(private val context: Context) {
             endpoints = acc.endpoints.entries
                 .map { Endpoint(it.key, it.value.params.toList(), it.value.sources.toList()) }
                 .sortedBy { it.path },
-            params = acc.params.toList()
+            params = acc.params.toList(),
+            webviews = webviewAcc.values
+                .sortedWith(compareBy({ severityOrder(it.severity) }, { it.callerClass }))
         )
     }
 
@@ -352,6 +379,108 @@ class WebExtractor(private val context: Context) {
         // Require at least one alphanumeric segment.
         return path.drop(1).split('/').any { seg -> seg.any { it.isLetterOrDigit() } }
     }
+
+    /**
+     * Scans DEX for calls to WebSettings/WebView sensitive methods.
+     *
+     * Uses instanceof checks (same pattern as the working scanDex) rather than
+     * opcode name string comparisons which are fragile across dexlib2 versions.
+     *
+     * Instruction types:
+     *   Instruction35c  — invoke-virtual / invoke-static with up to 5 regs
+     *   Instruction3rc  — invoke-virtual/range / invoke-static/range
+     *   Instruction11n / Instruction21s / Instruction31i — const loads
+     */
+    private fun scanWebViews(
+        dex: com.android.tools.smali.dexlib2.iface.DexFile,
+        out: LinkedHashMap<String, WebViewFinding>
+    ) {
+        val targets = setOf(
+            "setJavaScriptEnabled",
+            "setAllowFileAccess",
+            "setAllowFileAccessFromFileURLs",
+            "setAllowUniversalAccessFromFileURLs",
+            "setAllowContentAccess",
+            "setWebContentsDebuggingEnabled",
+            "addJavascriptInterface"
+        )
+        val webClasses = setOf(
+            "Landroid/webkit/WebSettings;",
+            "Landroid/webkit/WebView;"
+        )
+        val noArgMethods = setOf("addJavascriptInterface")
+
+        for (cls in dex.classes) {
+            val callerClass = cls.type.toString()
+                .removePrefix("L").removeSuffix(";").replace('/', '.')
+            for (method in cls.methods) {
+                val impl = method.implementation ?: continue
+
+                // Register → last const value, plus a sliding lastConst fallback.
+                val regs = HashMap<Int, Int>()
+                var lastConst: Int? = null
+
+                for (insn in impl.instructions) {
+                    // ── Const loads (track bool/int values loaded into regs) ──
+                    when (insn) {
+                        is com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction11n -> {
+                            // const/4 vA, #+B  (narrow literal)
+                            regs[insn.registerA] = insn.narrowLiteral
+                            lastConst = insn.narrowLiteral
+                            continue
+                        }
+                        is com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21s -> {
+                            // const/16 vAA, #+BBBB
+                            regs[insn.registerA] = insn.narrowLiteral
+                            lastConst = insn.narrowLiteral
+                            continue
+                        }
+                        is com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction31i -> {
+                            // const vAA, #+BBBBBBBB
+                            regs[insn.registerA] = insn.narrowLiteral
+                            lastConst = insn.narrowLiteral
+                            continue
+                        }
+                    }
+
+                    // ── Invoke instructions (both 35c and 3rc forms) ──────────
+                    if (insn !is ReferenceInstruction) continue
+                    val ref = insn.reference as? MethodReference ?: continue
+                    val methodName = ref.name.toString()
+                    val defClass   = ref.definingClass.toString()
+                    if (methodName !in targets || defClass !in webClasses) continue
+
+                    // Resolve boolean argument.
+                    val arg: String? = if (methodName in noArgMethods) null else {
+                        // Instruction35c gives us direct register access.
+                        val i35 = insn as? com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
+                        val regVal: Int? = when {
+                            i35 != null && i35.registerCount >= 2 ->
+                                // invoke-virtual {vC=obj, vD=arg} → vD is the bool
+                                regs[i35.registerD] ?: lastConst
+                            i35 != null && i35.registerCount == 1 ->
+                                // invoke-static {vC=arg}
+                                regs[i35.registerC] ?: lastConst
+                            else ->
+                                // invoke-*/range or fallback
+                                lastConst
+                        }
+                        when (regVal) { 0 -> "false"; 1 -> "true"; else -> null }
+                    }
+
+                    val key = "$callerClass#$methodName"
+                    out.putIfAbsent(key, WebViewFinding(
+                        callerClass   = callerClass,
+                        method        = methodName,
+                        argument      = arg,
+                        definingClass = defClass,
+                        severity      = webViewSeverity(methodName, arg)
+                    ))
+                    lastConst = null
+                }
+            }
+        }
+    }
 }
 
 private val BOILERPLATE_HOSTS = setOf(
@@ -371,12 +500,46 @@ private val BOILERPLATE_HOSTS = setOf(
     "docbook.org"
 )
 
+/** Sort order: HIGH first, then MEDIUM, LOW, INFO. */
+private fun severityOrder(s: String) = when (s) { "HIGH" -> 0; "MEDIUM" -> 1; "LOW" -> 2; else -> 3 }
+
+/** Severity for a WebView setting call, taking the boolean arg into account. */
+private fun webViewSeverity(method: String, arg: String?): String {
+    // Only flag "true" calls as dangerous; "false" calls are safe (but still reported as INFO).
+    val enabled = arg == "true" || arg == null  // null = arg unknown, assume worst case
+    return when (method) {
+        "setAllowUniversalAccessFromFileURLs" -> if (enabled) "HIGH"   else "INFO"
+        "setJavaScriptEnabled"               -> if (enabled) "HIGH"   else "INFO"
+        "addJavascriptInterface"             -> "HIGH"   // always high — no bool arg
+        "setAllowFileAccessFromFileURLs"     -> if (enabled) "MEDIUM" else "INFO"
+        "setAllowFileAccess"                 -> if (enabled) "MEDIUM" else "INFO"
+        "setWebContentsDebuggingEnabled"     -> if (enabled) "MEDIUM" else "INFO"
+        "setAllowContentAccess"              -> if (enabled) "LOW"    else "INFO"
+        else                                 -> "INFO"
+    }
+}
+
+@Serializable
+data class WebViewFinding(
+    /** Fully-qualified class that makes the call. */
+    val callerClass: String,
+    /** Method name e.g. "setJavaScriptEnabled". */
+    val method: String,
+    /** Boolean argument as string ("true"/"false") or null if unknown / not applicable. */
+    val argument: String?,
+    /** The WebView/WebSettings class the method belongs to. */
+    val definingClass: String,
+    /** HIGH / MEDIUM / LOW / INFO */
+    val severity: String
+)
+
 @Serializable
 data class WebReport(
     val packageName: String,
     val urls: List<WebUrl>,
     val endpoints: List<Endpoint>,
-    val params: List<String>
+    val params: List<String>,
+    val webviews: List<WebViewFinding> = emptyList()
 )
 
 @Serializable
