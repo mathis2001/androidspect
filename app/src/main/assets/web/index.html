@@ -373,6 +373,26 @@
                             <code id="env-proxy-current" class="env-current muted small">Loading…</code>
                         </div>
 
+                        <!-- Frida manager -->
+                        <div class="env-card">
+                            <div class="env-card-h"><svg class="ic ic-sm"><use href="#i-terminal"/></svg> Frida Server</div>
+                            <p class="muted small">Manage frida-server on the device. Downloads directly from GitHub releases for the device's ABI.</p>
+                            <div id="frida-status-box" class="env-result muted small">Loading…</div>
+                            <div class="env-actions" style="margin-top:6px">
+                                <button class="btn small" id="frida-start">▶ Start</button>
+                                <button class="btn ghost small danger" id="frida-stop">■ Stop</button>
+                                <button class="btn ghost small" id="frida-refresh">↻ Refresh</button>
+                            </div>
+                            <div class="env-card-h small" style="margin-top:14px">Install version</div>
+                            <div class="env-row">
+                                <select class="input small" id="frida-version-select" style="flex:1">
+                                    <option value="">Loading versions…</option>
+                                </select>
+                                <button class="btn small" id="frida-install">Install</button>
+                            </div>
+                            <div id="frida-install-status" class="env-result" style="margin-top:6px;white-space:pre-wrap"></div>
+                        </div>
+
                     </div>
                 </section>
 

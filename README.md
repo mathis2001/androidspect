@@ -8,31 +8,35 @@ Per-package static inspection and dynamic tests:
 
 * List installed apps with danger tags for debug, backup, network potential misconfigs.
 * File browser for `/data/data/<pkg>`, with type-aware previews for text, JSON, XML, images, and a hex view for everything ealse.
-* SQLite reader with tables, schema, paginated rows, ad-hoc SELECT, CSV export
-* SharedPreferences viewer and inline editor
+* SQLite reader with tables, schema, paginated rows, ad-hoc SELECT, CSV export.
+* SharedPreferences viewer and inline editor.
 * Decoded `AndroidManifest.xml`
 * Components list (activities, services, receivers, providers) with the exported badge in red, name filter, exported-only toggle, sort exported-first.
 * Pre-builded (and callable) ADB commands based on the Manifest and the desassembled code.
-* Native libraries list per ABI with size and stripped-symbols flag, one-click `.so` download
+* Native libraries list per ABI with size and stripped-symbols flag, one-click `.so` download.
 * Disassemble and store the smali code.
 * Verify deeplinks assetlinks.
 * Extract and open deeplinks.
+* Extract Web related information.
+* PoC Overlay Attacks.
 * A markdown editor to take notes directly through the web interface.
-* A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring)
+* A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring).
 
 
 Live runtime:
 
-* Logcat tail over WebSocket with severity colouring, regex highlight, save-to-file
-* Process snapshot from `/proc` with PID, PPID, UID, RSS, state, full cmdline
-* TCP and UDP socket table from `/proc/net` decoded to `ip:port` with the owning package
+* Logcat tail over WebSocket with severity colouring, regex highlight, save-to-file.
+* Process snapshot from `/proc` with PID, PPID, UID, RSS, state, full cmdline.
+* TCP and UDP socket table from `/proc/net` decoded to `ip:port` with the owning package.
 
 Actions:
 
-* Start, force-stop, clear data
-* Pull every APK file that makes up a package (base plus splits) as a single ZIP
-* Root shell in the browser for one-shot `su` commands
-* Device file explorer
+* Start, force-stop, clear data.
+* Pull every APK file that makes up a package (base plus splits) as a single ZIP.
+* Root shell in the browser for one-shot `su` commands.
+* Device file explorer/manager.
+* Pentest environment management.
+
 
 ## Compatibility
 
@@ -47,6 +51,7 @@ Actions:
 | AGP | 8.9.1 |
 
 Core-library desugaring brings `java.time`, `java.util.function`, and `java.util.stream` to API 21 through 25, so Ktor 3 plus Netty work down to Lollipop.
+Some feature might need to install utilities through Termux. (wget, wz-utils for example)
 
 ## Quick install
 
@@ -145,6 +150,14 @@ Deeplinks validation and testing
 
 ![Deeplinks](screenshots/15-Deeplinks.PNG)
 
+Web Components static Analysis
+
+![Web](screenshots/18-Web-components-static-analysis.PNG)
+
+Overlay Attacks Capabilities
+
+![Overlay](screenshots/19-TapJacking-PoC-Capabilities.PNG)
+
 Snapshots & Diffs
 
 ![Snapshots](screenshots/14-Snapshots.PNG)
@@ -165,6 +178,10 @@ Logcat live tail.
 File Explorer
 
 ![FileExplorer](screenshots/16-FileExplorer.PNG)
+
+Pentesting environment management
+
+![EnvSetup](screenshots/16-Env-Setup.PNG)
 
 ## Security model
 

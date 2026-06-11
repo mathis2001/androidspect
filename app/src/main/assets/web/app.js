@@ -3067,7 +3067,30 @@ function initEnvsetup() {
             } finally { if (certFile) certInstall.disabled = false; }
         });
 
-        // Proxy
+        // Frida manager
+        $('#frida-start').addEventListener('click', async () => {
+            await fridaAction('start'); fridaLoadStatus();
+        });
+        $('#frida-stop').addEventListener('click', async () => {
+            await fridaAction('stop'); fridaLoadStatus();
+        });
+        $('#frida-refresh').addEventListener('click', fridaLoadStatus);
+        $('#frida-install').addEventListener('click', async () => {
+            const ver = $('#frida-version-select').value;
+            if (!ver) { toast('Pick a version', 'err'); return; }
+            const btn = $('#frida-install'); btn.disabled = true;
+            const st = $('#frida-install-status');
+            st.textContent = `Downloading frida-server ${ver}…`;
+            st.className = 'env-result';
+            try {
+                const r = await api.post(`/api/env/frida/install?version=${encodeURIComponent(ver)}`);
+                st.textContent = r.message;
+                st.className = 'env-result ' + (r.success ? 'ok' : 'err');
+                if (r.success) fridaLoadStatus();
+            } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
+            finally { btn.disabled = false; }
+        });
+
         $('#env-proxy-set').addEventListener('click', async () => {
             const host = $('#env-proxy-host').value.trim();
             const port = parseInt($('#env-proxy-port').value);
@@ -3093,9 +3116,43 @@ function initEnvsetup() {
     });
 
     envLoadProxy();
+    fridaLoadStatus();
+    fridaLoadReleases();
 }
-function refreshEnvsetup() { envLoadProxy(); }
+function refreshEnvsetup() { envLoadProxy(); fridaLoadStatus(); }
 
+async function fridaLoadStatus() {
+    const box = $('#frida-status-box');
+    if (!box) return;
+    try {
+        const s = await api.get('/api/env/frida/status');
+        const badge = s.running ? '<span class="tg cyan">running PID ' + s.pid + '</span>' : '<span class="tg">stopped</span>';
+        const ver = s.installed ? (s.installedVersion ? 'v' + fmt.esc(s.installedVersion) : 'installed') : 'not installed';
+        box.innerHTML = 'ABI: <strong>' + fmt.esc(s.abi) + '</strong> &nbsp; ' + badge + ' &nbsp; ' + ver;
+        box.className = 'env-result ' + (s.running ? 'ok' : '');
+    } catch (e) { box.textContent = e.message; box.className = 'env-result err'; }
+}
+
+async function fridaLoadReleases() {
+    const sel = $('#frida-version-select');
+    if (!sel) return;
+    try {
+        const r = await api.get('/api/env/frida/releases');
+        if (r.error) { sel.innerHTML = '<option value="">Error: ' + fmt.esc(r.error) + '</option>'; return; }
+        sel.innerHTML = r.versions.map(v => '<option value="' + fmt.esc(v) + '">' + fmt.esc(v) + '</option>').join('');
+    } catch (e) { sel.innerHTML = '<option value="">Failed: ' + fmt.esc(e.message) + '</option>'; }
+}
+
+async function fridaAction(action) {
+    const btn = action === 'start' ? $('#frida-start') : $('#frida-stop');
+    const st = $('#frida-install-status');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await api.post('/api/env/frida/' + action);
+        if (st) { st.textContent = r.message; st.className = 'env-result ' + (r.success ? 'ok' : 'err'); st.style.whiteSpace = 'pre-wrap'; }
+    } catch (e) { if (st) { st.textContent = e.message; st.className = 'env-result err'; } }
+    finally { if (btn) btn.disabled = false; }
+}
 
 async function envLoadProxy() {
     try {
