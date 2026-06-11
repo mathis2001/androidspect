@@ -3030,9 +3030,93 @@ async function ovDismiss() {
     } catch (e) { toast(e.message, 'err'); }
 }
 
+// ============== ENVIRONMENT SETUP tab ==============
+function initEnvsetup() {
+    once('envsetup', () => {
+        // Certificate — compute hash and show adb commands
+        const certInput = $('#env-cert-input');
+        const certInstall = $('#env-cert-install');
+        let certFile = null;
+
+        certInput.addEventListener('change', e => {
+            certFile = e.target.files?.[0] || null;
+            $('#env-cert-name').textContent = certFile ? certFile.name : '';
+            certInstall.disabled = !certFile;
+        });
+
+        certInstall.addEventListener('click', async () => {
+            if (!certFile) return;
+            certInstall.disabled = true;
+            const res = $('#env-cert-result');
+            res.textContent = 'Computing hash…'; res.className = 'env-result'; res.style.whiteSpace = 'pre-wrap';
+            try {
+                const form = new FormData();
+                form.append('file', certFile, certFile.name);
+                const r = await fetchAuthed('/api/env/cert', { method: 'POST', body: form });
+                const d = await r.json();
+                const msg = d.message || d.error || JSON.stringify(d);
+                res.textContent = msg;
+                res.className = 'env-result ' + (d.success ? 'ok' : 'err');
+                if (d.success) {
+                    certFile = null; certInput.value = '';
+                    $('#env-cert-name').textContent = '';
+                }
+            } catch (e) {
+                res.textContent = e.message || String(e);
+                res.className = 'env-result err';
+            } finally { if (certFile) certInstall.disabled = false; }
+        });
+
+        // Proxy
+        $('#env-proxy-set').addEventListener('click', async () => {
+            const host = $('#env-proxy-host').value.trim();
+            const port = parseInt($('#env-proxy-port').value);
+            if (!host) { toast('Enter a host', 'err'); return; }
+            const st = $('#env-proxy-status');
+            try {
+                const r = await api.put('/api/env/proxy', { host, port });
+                st.textContent = r.ok ? `✓ Proxy set to ${r.value}` : `✗ ${r.stderr || 'failed'}`;
+                st.className = 'env-result ' + (r.ok ? 'ok' : 'err');
+                envLoadProxy();
+            } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
+        });
+
+        $('#env-proxy-clear').addEventListener('click', async () => {
+            const st = $('#env-proxy-status');
+            try {
+                await api.del('/api/env/proxy');
+                st.textContent = '✓ Proxy cleared (set to :0)';
+                st.className = 'env-result ok';
+                envLoadProxy();
+            } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
+        });
+    });
+
+    envLoadProxy();
+}
+function refreshEnvsetup() { envLoadProxy(); }
+
+
+async function envLoadProxy() {
+    try {
+        const p = await api.get('/api/env/proxy');
+        const el = $('#env-proxy-current');
+        const isCleared = !p.current || p.current === ':0';
+        if (!isCleared) {
+            el.textContent = p.current;
+            el.style.color = 'var(--accent)';
+            if (p.host) $('#env-proxy-host').value = p.host;
+            if (p.port) $('#env-proxy-port').value = p.port;
+        } else {
+            el.textContent = 'none (:0)';
+            el.style.color = '';
+        }
+    } catch (_) {}
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, envsetup: initEnvsetup };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, envsetup: refreshEnvsetup };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

@@ -47,6 +47,7 @@
             <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
             <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
             <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+            <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
         </defs>
     </svg>
 
@@ -138,6 +139,7 @@
                     <div class="sb-label">Act</div>
                     <a class="sb-link tab" data-tab="shell"      role="tab"><svg class="ic"><use href="#i-terminal"/></svg>Shell</a>
                     <a class="sb-link tab" data-tab="devfiles"   role="tab"><svg class="ic"><use href="#i-hard-drive"/></svg>File Explorer</a>
+                    <a class="sb-link tab" data-tab="envsetup"   role="tab"><svg class="ic"><use href="#i-shield"/></svg>Env Setup</a>
                 </div>
             </nav>
         </aside>
@@ -330,6 +332,47 @@
                     <div class="df-split">
                         <div id="df-list" class="df-list grow-y"></div>
                         <div id="df-viewer" class="df-viewer grow-y"><div class="empty">Select a file to preview.</div></div>
+                    </div>
+                </section>
+
+                <!-- ENVIRONMENT SETUP -->
+                <section class="panel hidden" data-tab="envsetup">
+                    <div class="env-layout">
+
+                        <!-- Burp CA certificate -->
+                        <div class="env-card">
+                            <div class="env-card-h"><svg class="ic ic-sm"><use href="#i-shield"/></svg> Burp CA Certificate</div>
+                            <p class="muted small">Upload your Burp cert to get the exact filename and adb commands to install it as a system CA. The installation itself must be done from your PC via adb — direct system writes are blocked by SELinux on physical devices.</p>
+                            <div class="env-row">
+                                <label class="btn ghost small" style="cursor:pointer">
+                                    <svg class="ic ic-sm"><use href="#i-upload"/></svg>
+                                    Upload cert (.der / .pem / .crt)
+                                    <input type="file" id="env-cert-input" accept=".der,.pem,.crt,.cer" hidden>
+                                </label>
+                                <span class="muted small" id="env-cert-name"></span>
+                            </div>
+                            <button class="btn small" id="env-cert-install" disabled>Compute hash &amp; get commands</button>
+                            <div id="env-cert-result" class="env-result"></div>
+                        </div>
+
+                        <!-- Global proxy -->
+                        <div class="env-card">
+                            <div class="env-card-h"><svg class="ic ic-sm"><use href="#i-globe"/></svg> Global Proxy</div>
+                            <p class="muted small">Set the device-wide HTTP proxy. Point this to your Burp listener (usually your workstation's IP on port 8080). All HTTP/HTTPS traffic from apps that respect the system proxy will be routed through it.</p>
+                            <div class="env-row">
+                                <input class="input mono small" id="env-proxy-host" placeholder="192.168.1.x" style="flex:1;min-width:0">
+                                <span class="muted">:</span>
+                                <input class="input small" type="number" id="env-proxy-port" value="8080" min="1" max="65535" style="width:90px">
+                            </div>
+                            <div class="env-actions">
+                                <button class="btn small" id="env-proxy-set">Set proxy</button>
+                                <button class="btn ghost small danger" id="env-proxy-clear">Clear proxy</button>
+                            </div>
+                            <div id="env-proxy-status" class="env-result"></div>
+                            <div class="env-card-h small" style="margin-top:14px">Current proxy</div>
+                            <code id="env-proxy-current" class="env-current muted small">Loading…</code>
+                        </div>
+
                     </div>
                 </section>
 
