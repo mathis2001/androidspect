@@ -12,16 +12,16 @@ Per-package static inspection and dynamic tests:
 * SharedPreferences viewer and inline editor.
 * Decoded `AndroidManifest.xml`
 * Components list (activities, services, receivers, providers) with the exported badge in red, name filter, exported-only toggle, sort exported-first.
-* Pre-builded (and callable) ADB commands based on the Manifest and the desassembled code.
+* Pre-builded (and callable) ADB commands based on the Manifest and the desassembled code (+ extras names if static).
 * Native libraries list per ABI with size and stripped-symbols flag, one-click `.so` download.
-* Disassemble and store the smali code.
+* Disassemble and store the smali code with `baksmali`.
+* Import Decompiled code from `JadX` for in-app static analysis.
 * Verify deeplinks assetlinks.
-* Extract and open deeplinks.
-* Extract Web related information.
+* Extract and open deeplinks (+ potential parameters if static).
+* Extract Web related information (URL, potential endpoints and potential parameters).
 * PoC Overlay Attacks.
 * A markdown editor to take notes directly through the web interface.
 * A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring).
-
 
 Live runtime:
 
@@ -35,7 +35,7 @@ Actions:
 * Pull every APK file that makes up a package (base plus splits) as a single ZIP.
 * Root shell in the browser for one-shot `su` commands.
 * Device file explorer/manager.
-* Pentest environment management.
+* Pentest environment management (global proxy settings and frida-server download/install/start/stop).
 
 
 ## Compatibility
