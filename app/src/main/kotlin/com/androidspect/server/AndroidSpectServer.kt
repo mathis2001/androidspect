@@ -6,7 +6,9 @@ import com.androidspect.root.AppDataReader
 import com.androidspect.server.routes.appRoutes
 import com.androidspect.server.routes.assetRoutes
 import com.androidspect.server.routes.decompilerRoutes
+import com.androidspect.server.routes.clipboardRoutes
 import com.androidspect.server.routes.envSetupRoutes
+import com.androidspect.server.routes.screenshotRoutes
 import com.androidspect.server.routes.overlayRoutes
 import com.androidspect.server.routes.deeplinkRoutes
 import com.androidspect.server.routes.deviceFilesRoutes
@@ -171,6 +173,8 @@ class AndroidSpectServer(
                 snapshotRoutes(context)
                 webRoutes(context)
                 overlayRoutes(context)
+                screenshotRoutes(context)
+                clipboardRoutes(context)
                 envSetupRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()

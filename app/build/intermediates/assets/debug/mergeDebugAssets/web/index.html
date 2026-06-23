@@ -48,6 +48,7 @@
             <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
             <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
             <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+            <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></symbol>
         </defs>
     </svg>
 
@@ -139,6 +140,8 @@
                     <div class="sb-label">Act</div>
                     <a class="sb-link tab" data-tab="shell"      role="tab"><svg class="ic"><use href="#i-terminal"/></svg>Shell</a>
                     <a class="sb-link tab" data-tab="devfiles"   role="tab"><svg class="ic"><use href="#i-hard-drive"/></svg>File Explorer</a>
+                    <a class="sb-link tab" data-tab="screenshot" role="tab"><svg class="ic"><use href="#i-camera"/></svg>Screen Capture</a>
+                    <a class="sb-link tab" data-tab="clipboard"  role="tab"><svg class="ic"><use href="#i-clipboard"/></svg>Clipboard</a>
                     <a class="sb-link tab" data-tab="envsetup"   role="tab"><svg class="ic"><use href="#i-shield"/></svg>Env Setup</a>
                 </div>
             </nav>
@@ -333,6 +336,41 @@
                         <div id="df-list" class="df-list grow-y"></div>
                         <div id="df-viewer" class="df-viewer grow-y"><div class="empty">Select a file to preview.</div></div>
                     </div>
+                </section>
+
+                <!-- SCREEN CAPTURE (screenshots + recordings) -->
+                <section class="panel hidden" data-tab="screenshot">
+                    <div class="toolbar">
+                        <button class="btn small" id="sc-take">📷 Screenshot</button>
+                        <button class="btn small" id="sc-rec-start">⏺ Record</button>
+                        <button class="btn ghost small danger hidden" id="sc-rec-stop">⏹ Stop</button>
+                        <span class="sc-rec-timer hidden" id="sc-rec-timer">0s</span>
+                        <button class="btn ghost small" id="sc-refresh">↻ Refresh</button>
+                        <span class="muted small" id="sc-count"></span>
+                    </div>
+                    <div id="sc-gallery" class="sc-gallery"></div>
+                    <!-- Lightbox (image preview) -->
+                    <div id="sc-lightbox" class="sc-lightbox hidden">
+                        <div class="sc-lightbox-bg" id="sc-lightbox-bg"></div>
+                        <div class="sc-lightbox-box">
+                            <img id="sc-lightbox-img" src="" alt="screenshot preview">
+                            <div class="sc-lightbox-actions">
+                                <button class="btn small" id="sc-lightbox-dl">⬇ Download</button>
+                                <button class="btn ghost small danger" id="sc-lightbox-del">🗑 Delete</button>
+                                <button class="btn ghost small" id="sc-lightbox-close">✕ Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CLIPBOARD -->
+                <section class="panel hidden" data-tab="clipboard">
+                    <div class="toolbar">
+                        <button class="btn small" id="cb-dump">📋 Dump clipboard</button>
+                        <button class="btn ghost small" id="cb-watch-btn" aria-pressed="false">👁 Watch</button>
+                        <span class="muted small" id="cb-watch-status"></span>
+                    </div>
+                    <div id="cb-entries" class="cb-entries"></div>
                 </section>
 
                 <!-- ENVIRONMENT SETUP -->

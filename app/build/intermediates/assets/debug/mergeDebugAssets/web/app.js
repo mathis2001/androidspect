@@ -3205,9 +3205,260 @@ async function envLoadProxy() {
     } catch (_) {}
 }
 
+// ============== SCREEN CAPTURE tab ==============
+let scCurrentName = null;
+let scCurrentType = 'image';
+let scRecTimer = null;
+let scRecSeconds = 0;
+
+function initScreenshot() {
+    once('screenshot', () => {
+        $('#sc-take').addEventListener('click', scTake);
+        $('#sc-rec-start').addEventListener('click', scRecStart);
+        $('#sc-rec-stop').addEventListener('click', scRecStop);
+        $('#sc-refresh').addEventListener('click', scLoad);
+        $('#sc-lightbox-close').addEventListener('click', scCloseLightbox);
+        $('#sc-lightbox-bg').addEventListener('click', scCloseLightbox);
+        $('#sc-lightbox-dl').addEventListener('click', () => {
+            if (!scCurrentName) return;
+            const a = document.createElement('a');
+            a.href = '/api/capture/' + scCurrentName;
+            a.download = scCurrentName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        });
+        $('#sc-lightbox-del').addEventListener('click', async () => {
+            if (!scCurrentName) return;
+            await api.del('/api/capture/' + scCurrentName);
+            scCloseLightbox(); scLoad();
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') scCloseLightbox(); });
+    });
+    scLoad();
+    scCheckRecStatus();
+}
+function refreshScreenshot() { scLoad(); scCheckRecStatus(); }
+
+async function scLoad() {
+    const gallery = $('#sc-gallery');
+    gallery.innerHTML = '<div class="muted small">Loading...</div>';
+    try {
+        const captures = await api.get('/api/capture');
+        const count = captures.length;
+        $('#sc-count').textContent = count ? count + ' file' + (count > 1 ? 's' : '') : '';
+        if (!count) { gallery.innerHTML = '<div class="empty">No captures yet.</div>'; return; }
+        gallery.innerHTML = captures.map(c => {
+            const label = c.name
+                .replace(/^(screenshot|screenrecord)_/, '')
+                .replace(/\.(png|mp4)$/, '');
+            if (c.type === 'video') {
+                return '<div class="sc-thumb sc-thumb-video" data-name="' + fmt.esc(c.name) + '" data-type="video" title="' + fmt.esc(c.name) + '">' +
+                    '<div class="sc-thumb-play">&#9654;</div>' +
+                    '<div class="sc-thumb-name muted small">REC ' + fmt.esc(label) + '</div>' +
+                    '<div class="sc-thumb-size muted small">' + scFmtSize(c.sizeBytes) + '</div></div>';
+            }
+            return '<div class="sc-thumb" data-name="' + fmt.esc(c.name) + '" data-type="image" title="' + fmt.esc(c.name) + '">' +
+                '<img src="' + fmt.esc(c.url) + '" alt="' + fmt.esc(c.name) + '" loading="lazy">' +
+                '<div class="sc-thumb-name muted small">' + fmt.esc(label) + '</div></div>';
+        }).join('');
+        $$('.sc-thumb', gallery).forEach(t =>
+            t.addEventListener('click', () => scOpenLightbox(t.dataset.name, t.dataset.type)));
+    } catch (e) { gallery.innerHTML = '<div class="empty">' + fmt.esc(e.message) + '</div>'; }
+}
+
+async function scTake() {
+    const btn = $('#sc-take'); btn.disabled = true; btn.textContent = 'Capturing...';
+    try {
+        const r = await fetchAuthed('/api/capture/screenshot', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) { toast(d.error || 'Failed', 'err'); return; }
+        toast('Screenshot saved', 'ok'); scLoad();
+    } catch (e) { toast(e.message, 'err'); }
+    finally { btn.disabled = false; btn.textContent = 'Screenshot'; }
+}
+
+async function scRecStart() {
+    const btn = $('#sc-rec-start'); btn.disabled = true;
+    try {
+        const r = await fetchAuthed('/api/capture/record/start', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok || d.error) { toast(d.error || 'Failed to start', 'err'); return; }
+        toast('Recording started', 'ok');
+        $('#sc-rec-start').classList.add('hidden');
+        $('#sc-rec-stop').classList.remove('hidden');
+        $('#sc-rec-timer').classList.remove('hidden');
+        scRecSeconds = 0;
+        scRecTimer = setInterval(() => {
+            scRecSeconds++;
+            $('#sc-rec-timer').textContent = scFmtTime(scRecSeconds);
+        }, 1000);
+    } catch (e) { toast(e.message, 'err'); }
+    finally { btn.disabled = false; }
+}
+
+async function scRecStop() {
+    const btn = $('#sc-rec-stop'); btn.disabled = true; btn.textContent = 'Stopping...';
+    try {
+        const r = await fetchAuthed('/api/capture/record/stop', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok || d.error) { toast(d.error || 'Failed to stop', 'err'); return; }
+        toast('Recording saved (' + scFmtSize(d.sizeBytes) + ')', 'ok');
+        scLoad();
+    } catch (e) { toast(e.message, 'err'); }
+    finally {
+        clearInterval(scRecTimer); scRecTimer = null;
+        btn.disabled = false; btn.textContent = 'Stop';
+        $('#sc-rec-stop').classList.add('hidden');
+        $('#sc-rec-timer').classList.add('hidden');
+        $('#sc-rec-start').classList.remove('hidden');
+    }
+}
+
+async function scCheckRecStatus() {
+    try {
+        const s = await api.get('/api/capture/record/status');
+        if (s.recording) {
+            $('#sc-rec-start').classList.add('hidden');
+            $('#sc-rec-stop').classList.remove('hidden');
+            $('#sc-rec-timer').classList.remove('hidden');
+            scRecSeconds = s.elapsedSeconds;
+            if (!scRecTimer) scRecTimer = setInterval(() => {
+                scRecSeconds++;
+                $('#sc-rec-timer').textContent = scFmtTime(scRecSeconds);
+            }, 1000);
+        }
+    } catch (_) {}
+}
+
+function scOpenLightbox(name, type) {
+    scCurrentName = name; scCurrentType = type;
+    const img = $('#sc-lightbox-img');
+    if (type === 'video') {
+        img.style.display = 'none';
+        let vid = $('#sc-lightbox-video');
+        if (!vid) {
+            vid = document.createElement('video');
+            vid.id = 'sc-lightbox-video'; vid.controls = true;
+            vid.style.cssText = 'max-width:85vw;max-height:75vh;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+            img.parentNode.insertBefore(vid, img);
+        }
+        vid.src = '/api/capture/' + name + '?t=' + Date.now();
+        vid.style.display = 'block';
+    } else {
+        const vid = $('#sc-lightbox-video');
+        if (vid) { vid.pause(); vid.src = ''; vid.style.display = 'none'; }
+        img.style.display = 'block';
+        img.src = '/api/capture/' + name + '?t=' + Date.now();
+    }
+    $('#sc-lightbox').classList.remove('hidden');
+}
+
+function scCloseLightbox() {
+    $('#sc-lightbox').classList.add('hidden'); scCurrentName = null;
+    $('#sc-lightbox-img').src = '';
+    const vid = $('#sc-lightbox-video');
+    if (vid) { vid.pause(); vid.src = ''; }
+}
+
+function scFmtSize(b) {
+    if (!b) return '0 B';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+}
+function scFmtTime(s) {
+    const m = Math.floor(s / 60), sec = s % 60;
+    return m > 0 ? m + 'm ' + sec + 's' : sec + 's';
+}
+
+// ============== CLIPBOARD tab ==============
+let cbWatchInterval = null;
+let cbEntries = [];
+
+function initClipboard() {
+    once('clipboard', () => {
+        $('#cb-dump').addEventListener('click', cbDump);
+        $('#cb-watch-btn').addEventListener('click', () => {
+            const btn = $('#cb-watch-btn');
+            const watching = btn.getAttribute('aria-pressed') === 'true';
+            if (watching) {
+                cbStopWatch(); btn.setAttribute('aria-pressed', 'false');
+                btn.textContent = '👁 Watch'; $('#cb-watch-status').textContent = '';
+            } else {
+                cbStartWatch(); btn.setAttribute('aria-pressed', 'true');
+                btn.textContent = '⏹ Stop watching';
+            }
+        });
+    });
+    cbDump();
+}
+function refreshClipboard() { cbDump(); }
+
+async function cbDump() {
+    try {
+        const r = await api.get('/api/clipboard');
+        cbAddEntry(r);
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+function cbAddEntry(r) {
+    // Avoid duplicate consecutive entries with same content.
+    if (cbEntries.length && cbEntries[0].content === r.content && r.content !== '') return;
+    cbEntries.unshift(r);
+    if (cbEntries.length > 100) cbEntries = cbEntries.slice(0, 100);
+    cbRender();
+}
+
+function cbRender() {
+    const el = $('#cb-entries');
+    if (!cbEntries.length) { el.innerHTML = '<div class="empty">No clipboard data yet.</div>'; return; }
+    el.innerHTML = cbEntries.map((e, i) => {
+        const ts = new Date(e.timestamp).toLocaleTimeString();
+        const hasContent = e.content && e.content.trim();
+        const mimes = (e.mimeTypes || []).map(m => `<span class="tg muted">${fmt.esc(m)}</span>`).join('');
+        const itemBadge = e.itemCount > 0 ? `<span class="tg">${e.itemCount} item${e.itemCount > 1 ? 's' : ''}</span>` : '';
+        return `<div class="cb-entry ${hasContent ? '' : 'cb-empty'}">
+            <div class="cb-entry-header">
+                <span class="muted small">${ts}</span>
+                ${itemBadge}${mimes}
+                ${hasContent ? `<button class="btn ghost small cb-copy" data-i="${i}" style="margin-left:auto">copy</button>` : ''}
+                <button class="btn ghost small danger cb-del-entry" data-i="${i}" ${hasContent ? '' : 'style="margin-left:auto"'}>✕</button>
+            </div>
+            ${hasContent
+                ? `<pre class="cb-content">${fmt.esc(e.content.slice(0, 2000))}</pre>`
+                : `<div class="muted small" style="padding:8px 12px">${fmt.esc(e.error || '(empty)')}</div>`}
+        </div>`;
+    }).join('');
+    $$('.cb-copy', el).forEach(b => b.onclick = () => {
+        const entry = cbEntries[+b.dataset.i];
+        navigator.clipboard?.writeText(entry.content)
+            .then(() => toast('Copied', 'ok'), () => toast('Copy failed', 'err'));
+    });
+    $$('.cb-del-entry', el).forEach(b => b.onclick = () => {
+        cbEntries.splice(+b.dataset.i, 1);
+        cbRender();
+    });
+}
+
+function cbStartWatch() {
+    cbWatchInterval = setInterval(async () => {
+        try {
+            const r = await api.get('/api/clipboard');
+            const changed = !cbEntries.length || cbEntries[0].content !== r.content;
+            if (changed && r.content) {
+                cbAddEntry(r);
+                toast('Clipboard changed', 'ok');
+            }
+            $('#cb-watch-status').textContent = 'last check: ' + new Date().toLocaleTimeString();
+        } catch (_) {}
+    }, 3000);
+}
+function cbStopWatch() {
+    if (cbWatchInterval) { clearInterval(cbWatchInterval); cbWatchInterval = null; }
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, envsetup: initEnvsetup };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, envsetup: refreshEnvsetup };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
