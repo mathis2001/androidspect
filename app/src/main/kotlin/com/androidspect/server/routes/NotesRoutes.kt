@@ -87,7 +87,7 @@ fun Routing.notesRoutes(context: Context) {
             val f = noteFile(pkg)
             val existed = f.exists()
             if (existed) f.delete()
-            call.respond(mapOf("pkg" to pkg, "deleted" to existed))
+            call.respond(NoteResponse(pkg = pkg, markdown = "", updatedAt = 0L))
         }
     }
 }
