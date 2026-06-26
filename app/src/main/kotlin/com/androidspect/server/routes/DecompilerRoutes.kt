@@ -68,8 +68,20 @@ import java.util.zip.ZipFile
  */
 fun Routing.decompilerRoutes(context: Context) {
 
-    val workDir = File(context.cacheDir, "decompiler").also { it.mkdirs() }
-    DecompileJob.loadFromDisk(workDir)
+    // Root dir — actual job dirs are scoped per package: decompiler/<sanitized_pkg>/
+    val baseDir = File(context.cacheDir, "decompiler").also { it.mkdirs() }
+
+    // Load jobs for ALL packages on startup so IDs remain accessible.
+    baseDir.listFiles { f -> f.isDirectory }?.forEach { pkgDir ->
+        DecompileJob.loadFromDisk(pkgDir)
+    }
+    // Also load legacy flat jobs (migration from old single-dir layout).
+    DecompileJob.loadFromDisk(baseDir)
+
+    fun workDirFor(pkg: String?): File {
+        val safe = pkg?.replace(Regex("[^a-zA-Z0-9._\\-]"), "_") ?: "unknown"
+        return File(baseDir, safe).also { it.mkdirs() }
+    }
 
     route("/api/decompiler") {
 
@@ -93,15 +105,23 @@ fun Routing.decompilerRoutes(context: Context) {
                     HttpStatusCode.BadRequest, mapOf("error" to "Provide 'pkg' or 'apkPath'")
                 )
             }
-            val label = req.pkg ?: File(apkPath).nameWithoutExtension
-            val job   = DecompileJob.create(label, apkPath, workDir)
+            val label   = req.pkg ?: File(apkPath).nameWithoutExtension
+            val workDir = workDirFor(req.pkg)
+            val job     = DecompileJob.create(label, apkPath, workDir)
             DecompileJob.register(job)
             job.start()
             call.respond(HttpStatusCode.Accepted, mapOf("jobId" to job.id))
         }
 
+        // GET /api/decompiler/jobs?pkg=com.example  → only that package's jobs
+        // GET /api/decompiler/jobs                  → all jobs (for backward compat)
         get("/jobs") {
-            call.respond(DecompileJob.all().map { it.toSummary() })
+            val pkg = call.request.queryParameters["pkg"]
+            val all = DecompileJob.all().map { it.toSummary() }
+            val filtered = if (pkg != null)
+                all.filter { it.apkPath.contains(pkg) || it.label == pkg || it.label.startsWith(pkg) }
+            else all
+            call.respond(filtered)
         }
 
         /**
@@ -124,6 +144,8 @@ fun Routing.decompilerRoutes(context: Context) {
         post("/jadx") {
             val label = call.request.queryParameters["label"]?.takeIf { it.isNotBlank() }
                 ?: "JADX import"
+            val pkg = call.request.queryParameters["pkg"]
+            val workDir = workDirFor(pkg)
             var staged: File? = null
             val multipart = call.receiveMultipart()
             multipart.forEachPart { part ->
@@ -181,19 +203,26 @@ fun Routing.decompilerRoutes(context: Context) {
                     HttpStatusCode.Conflict,
                     mapOf("error" to "Job not complete", "status" to job.status.name)
                 )
-                call.respond(buildTree(job.outputDir, job.outputDir))
+                // Build tree from outputDir — children paths are relative to outputDir
+                // so they can be passed directly to the /file endpoint as ?path=
+                val tree = buildTree(job.outputDir, job.outputDir)
+                call.respond(tree)
             }
 
             get("/file") {
                 val job = jobOrNotFound(call, call.parameters["id"]) ?: return@get
                 if (job.status != JobStatus.DONE) return@get call.respond(
-                    HttpStatusCode.Conflict, mapOf("error" to "Job not complete")
+                    HttpStatusCode.Conflict, mapOf("error" to "Job not complete (status=${job.status})")
                 )
                 val rel = call.request.queryParameters["path"]
                     ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "path required"))
                 val target = jailcheck(job.outputDir, rel)
-                    ?: return@get call.respond(HttpStatusCode.Forbidden, mapOf("error" to "path outside output"))
-                if (!target.isFile) return@get call.respond(HttpStatusCode.NotFound)
+                    ?: return@get call.respond(HttpStatusCode.Forbidden,
+                        mapOf("error" to "path outside output — outputDir=${job.outputDir.absolutePath}, rel=$rel"))
+                if (!target.exists()) return@get call.respond(HttpStatusCode.NotFound,
+                    mapOf("error" to "file not found: ${target.absolutePath}"))
+                if (!target.isFile) return@get call.respond(HttpStatusCode.NotFound,
+                    mapOf("error" to "not a file: ${target.absolutePath}"))
                 call.respond(FileContent(
                     path     = rel,
                     content  = target.readText(Charsets.UTF_8),
@@ -454,13 +483,15 @@ private fun jailcheck(root: File, rel: String): File? {
 }
 
 private fun buildTree(node: File, base: File): TreeNode {
-    if (node.isFile) return TreeNode(node.name, node.relativeTo(base).path,
+    // relativeTo returns "." for the root itself — normalize to "".
+    val relPath = node.relativeTo(base).path.let { if (it == ".") "" else it }
+    if (node.isFile) return TreeNode(node.name, relPath,
         "file", node.length(), languageFor(node.name), null)
     val children = (node.listFiles() ?: emptyArray())
         .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
         .map { buildTree(it, base) }
     return TreeNode(if (node == base) base.name else node.name,
-        node.relativeTo(base).path, "dir", null, null, children)
+        relPath, "dir", null, null, children)
 }
 
 private fun zipDir(dir: File, prefix: String, zip: java.util.zip.ZipOutputStream) {

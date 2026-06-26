@@ -1510,9 +1510,30 @@ function refreshShell() {}
 
 // ============== CODE tab ==============
 let codeJobId    = null;
+let searchJobId  = null;  // jobId used for the most recent search — may differ from selected job
 let codeOpenTabs = [];
 let codeTabIdx   = -1;
 let codePollTimer= null;
+let codePkg      = null;  // package the current code state belongs to
+
+function codeReset() {
+    codeStopPoll();
+    codeJobId    = null;
+    searchJobId  = null;
+    codeOpenTabs = [];
+    codeTabIdx   = -1;
+    codePkg      = null;
+    renderCodeTabs();
+    $('#code-tree').innerHTML       = '<div class="empty small muted">Select a job to browse its source.</div>';
+    $('#code-viewer').innerHTML     = '';
+    $('#code-viewer').style.display = '';
+    $('#code-search-results').classList.add('hidden');
+    $('#code-search-input').value   = '';
+    $('#code-crumb').innerHTML      = '';
+    $('#code-status').textContent   = '';
+    $('#code-zip-btn').disabled     = true;
+    $('#code-progress-wrap').hidden = true;
+}
 
 function initCode() {
     once('code', () => {
@@ -1522,6 +1543,7 @@ function initCode() {
                 $('#code-decompile').disabled = true;
                 $('#code-status').textContent = 'Starting…';
                 const r = await api.post('/api/decompiler/jobs', { pkg: S.pkg });
+                codePkg   = S.pkg;
                 codeJobId = r.jobId;
                 codeOpenTabs = []; codeTabIdx = -1;
                 renderCodeTabs();
@@ -1556,7 +1578,7 @@ function initCode() {
                 const form = new FormData();
                 form.append('file', file, file.name);
                 const r = await fetchAuthed(
-                    `/api/decompiler/jadx?label=${encodeURIComponent(label)}`,
+                    `/api/decompiler/jadx?label=${encodeURIComponent(label)}&pkg=${encodeURIComponent(S.pkg || '')}`,
                     { method: 'POST', body: form }
                 );
                 if (!r.ok) throw await explainError(r);
@@ -1581,14 +1603,25 @@ function initCode() {
         });
     });
 
+    // Only reset state when switching to a different package.
+    // If the user just switched tabs and came back to the same package,
+    // keep the tree, open files, and job selection intact.
+    if (codePkg !== S.pkg) {
+        codeReset();
+        codePkg = S.pkg;
+        codeRefreshJobList();
+    }
+}
+
+function refreshCode() {
+    if (codePkg !== S.pkg) { codeReset(); codePkg = S.pkg; }
     codeRefreshJobList();
 }
 
-function refreshCode() { codeRefreshJobList(); }
-
 async function codeRefreshJobList() {
     try {
-        const jobs = await api.get('/api/decompiler/jobs');
+        const pkgParam = S.pkg ? `?pkg=${encodeURIComponent(S.pkg)}` : '';
+        const jobs = await api.get(`/api/decompiler/jobs${pkgParam}`);
         const list = $('#code-job-list');
         if (!jobs.length) {
             list.innerHTML = '<div class="empty small">No jobs yet.</div>';
@@ -1725,16 +1758,25 @@ function codeRenderNode(node, container, depth, jobId) {
 }
 
 async function codeOpenFile(jobId, path, name, language) {
-    const existing = codeOpenTabs.findIndex(t => t.path === path);
+    if (!jobId) { toast('No job selected', 'err'); return; }
+    if (!path)  { toast('No file path', 'err'); return; }
+    const existing = codeOpenTabs.findIndex(t => t.path === path && t.jobId === jobId);
     if (existing >= 0) { codeActivateTab(existing); return; }
-    $('#code-viewer').innerHTML = '<div class="empty"><span class="muted">Loading…</span></div>';
+    // Always restore viewer visibility first — codeRunSearch sets display:none on it.
+    $('#code-viewer').style.display = '';
     $('#code-search-results').classList.add('hidden');
+    $('#code-viewer').innerHTML = '<div class="empty"><span class="muted">Loading…</span></div>';
     try {
         const data = await api.get(`/api/decompiler/jobs/${jobId}/file?path=${encodeURIComponent(path)}`);
-        codeOpenTabs.push({ path, label: name, lang: data.language, content: data.content, jobId });
+        if (!data.content && data.error) {
+            $('#code-viewer').innerHTML = `<div class="empty" style="color:var(--red)">${fmt.esc(data.error)}</div>`;
+            return;
+        }
+        codeOpenTabs.push({ path, label: name, lang: data.language || language, content: data.content || '', jobId });
         codeActivateTab(codeOpenTabs.length - 1);
     } catch (e) {
-        $('#code-viewer').innerHTML = `<div class="empty" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+        // api.get throws on non-2xx — show the full error including server message
+        $('#code-viewer').innerHTML = `<div class="empty" style="color:var(--red)">${fmt.esc(e.message)}<br><small>jobId: ${fmt.esc(jobId)}, path: ${fmt.esc(path)}</small></div>`;
     }
 }
 
@@ -1753,9 +1795,11 @@ function codeActivateTab(idx) {
     const gutter = lines.map((_, i) => `<div>${i + 1}</div>`).join('');
     let highlighted;
     try {
-        highlighted = window.hljs
-            ? hljs.highlight(tab.content, { language: tab.lang, ignoreIllegals: true }).value
-            : codeEsc(tab.content);
+        if (window.hljs && hljs.getLanguage(tab.lang)) {
+            highlighted = hljs.highlight(tab.content, { language: tab.lang, ignoreIllegals: true }).value;
+        } else {
+            highlighted = codeEsc(tab.content);
+        }
     } catch (_) { highlighted = codeEsc(tab.content); }
     $('#code-search-results').classList.add('hidden');
     $('#code-viewer').innerHTML = `
@@ -1798,12 +1842,13 @@ async function codeRunSearch() {
     const q = $('#code-search-input').value.trim();
     if (!q) { $('#code-search-input').focus(); return; }
     if (!codeJobId) { toast('Start a decompile job first.', 'err'); return; }
+    searchJobId = codeJobId;  // snapshot the job at search time
     const sr = $('#code-search-results');
     sr.classList.remove('hidden');
     sr.innerHTML = '<div class="empty small muted">Searching…</div>';
     $('#code-viewer').style.display = 'none';
     try {
-        const data = await api.get(`/api/decompiler/jobs/${codeJobId}/search?q=${encodeURIComponent(q)}`);
+        const data = await api.get(`/api/decompiler/jobs/${searchJobId}/search?q=${encodeURIComponent(q)}`);
         if (!data.hits.length) {
             sr.innerHTML = `<div class="empty small muted">No results for <code>${fmt.esc(q)}</code></div>`;
             return;
@@ -1812,15 +1857,16 @@ async function codeRunSearch() {
         data.hits.forEach(h => (byFile[h.path] = byFile[h.path] || []).push(h));
         sr.innerHTML = `<div class="muted small" style="margin-bottom:8px">${data.total} result${data.total !== 1 ? 's' : ''} for <strong>${fmt.esc(q)}</strong></div>` +
             Object.entries(byFile).map(([fp, hits]) => `
-                <div class="code-sr-file" data-path="${fmt.esc(fp)}">${fmt.esc(fp)}</div>
+                <div class="code-sr-file" data-path="${fmt.esc(fp)}" data-jobid="${fmt.esc(searchJobId)}">${fmt.esc(fp)}</div>
                 ${hits.map(h => `<div class="code-sr-line"><span class="code-sr-lineno">${h.line}</span>${codeEsc(h.text.trim())}</div>`).join('')}
             `).join('');
         $$('.code-sr-file', sr).forEach(el => {
             el.addEventListener('click', () => {
                 sr.classList.add('hidden');
                 $('#code-viewer').style.display = '';
-                const fp = el.dataset.path;
-                codeOpenFile(codeJobId, fp, fp.split('/').pop(), codeLangFromName(fp.split('/').pop()));
+                const fp  = el.dataset.path;
+                const jid = el.dataset.jobid || codeJobId;
+                codeOpenFile(jid, fp, fp.split('/').pop(), codeLangFromName(fp.split('/').pop()));
             });
         });
     } catch (e) {
@@ -1846,6 +1892,38 @@ function codeFileIcon(lang) { return CODE_FILE_ICONS[lang] || '📄'; }
     document.head.appendChild(link);
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+    s.onload = () => {
+        // Register smali — not built into hljs but common in Android pentest.
+        hljs.registerLanguage('smali', () => ({
+            name: 'Smali',
+            keywords: {
+                keyword:
+                    'invoke-virtual invoke-static invoke-direct invoke-interface invoke-super ' +
+                    'invoke-virtual/range invoke-static/range invoke-direct/range ' +
+                    'iget iget-object iget-wide iget-boolean iput iput-object iput-wide iput-boolean ' +
+                    'sget sget-object sget-wide sget-boolean sput sput-object sput-wide sput-boolean ' +
+                    'move move-object move-result move-result-object move-result-wide move-exception ' +
+                    'return return-void return-object return-wide ' +
+                    'const const/4 const/16 const/high16 const-wide const-string const-class ' +
+                    'new-instance new-array filled-new-array check-cast instance-of array-length ' +
+                    'if-eq if-ne if-lt if-ge if-gt if-le if-eqz if-nez if-ltz if-gez if-gtz if-lez ' +
+                    'goto goto/16 goto/32 switch packed-switch sparse-switch ' +
+                    'add-int sub-int mul-int div-int rem-int and-int or-int xor-int ' +
+                    'add-int/2addr sub-int/2addr mul-int/2addr div-int/2addr ' +
+                    'monitor-enter monitor-exit throw aget aput',
+                literal: 'true false null',
+            },
+            contains: [
+                hljs.COMMENT('#', '$'),
+                { className: 'string',   begin: '"', end: '"', illegal: '\\n' },
+                { className: 'type',     begin: /L[\w/$]+;/ },
+                { className: 'keyword',  begin: /^\s*\.(class|super|implements|field|method|end method|annotation|end annotation|registers|prologue|line|catch|catchall|source|param|local)\b/, relevance: 10 },
+                { className: 'number',   begin: /\b(0x[\da-fA-F]+|[\d]+[fFdDlL]?)\b/ },
+                { className: 'symbol',   begin: /:[a-zA-Z_][\w$]*/ },
+                { className: 'variable', begin: /\b[vp]\d+\b/ },
+            ]
+        }));
+    };
     document.head.appendChild(s);
 })();
 
