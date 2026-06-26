@@ -7,12 +7,12 @@ Swissknife Applicative Android Pentesting app that act like a C2 and embed a web
 Per-package static inspection and dynamic tests:
 
 * List installed apps with danger tags for debug, backup, network potential misconfigs.
-* File browser for `/data/data/<pkg>`, with type-aware previews for text, JSON, XML, images, and a hex view for everything ealse.
+* File browser for `/data/data/<pkg>`, with type-aware previews for text, JSON, XML, images, and a hex view for everything else.
 * SQLite reader with tables, schema, paginated rows, ad-hoc SELECT, CSV export.
 * SharedPreferences viewer and inline editor.
 * Decoded `AndroidManifest.xml`
 * Components list (activities, services, receivers, providers) with the exported badge in red, name filter, exported-only toggle, sort exported-first.
-* Pre-builded (and callable) ADB commands based on the Manifest and the desassembled code (+ extras names if static).
+* Pre-builded (and callable) shell commands based on the Manifest and the desassembled code (+ extras names if static).
 * Native libraries list per ABI with size and stripped-symbols flag, one-click `.so` download.
 * Disassemble and store the smali code with `baksmali`.
 * Import Decompiled code from `JadX` for in-app static analysis.
@@ -35,6 +35,8 @@ Actions:
 * Pull every APK file that makes up a package (base plus splits) as a single ZIP.
 * Root shell in the browser for one-shot `su` commands.
 * Device file explorer/manager.
+* Screen Capture (Screenshots and Screen recordings)
+* Clipboard dumping and monitoring (Note: Since Android 10 (SDK 29), apps in background can't access the clipboard data and needs to go foreground.)
 * Pentest environment management (global proxy settings and frida-server download/install/start/stop).
 
 
@@ -178,6 +180,14 @@ Logcat live tail.
 File Explorer
 
 ![FileExplorer](screenshots/16-FileExplorer.PNG)
+
+Screenshots & Screen Recordings
+
+![ScreenCap](screenshots/20-Screencap.PNG)
+
+Clipboard dumping and monitoring
+
+![Clipboard](screenshots/21-Clipboard.PNG)
 
 Pentesting environment management
 
