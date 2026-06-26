@@ -985,9 +985,10 @@ function renderComponentRow(c, pkg) {
                             <code class="cmp-cmd-text" id="${rid}_${i}">${fmt.esc(cmd.display)}</code>
                             <div class="cmp-cmd-actions">
                                 <button class="btn ghost small cmp-copy" data-copy="${rid}_${i}" title="Copy adb command">copy</button>
-                                <button class="btn small cmp-run" data-run="${rid}_${i}" data-shell="${fmt.esc(cmd.shell)}" title="Run on device via su">▶ Launch</button>
+                                <button class="btn small cmp-run" data-run="${rid}_${i}" data-shell="${fmt.esc(cmd.shell)}" title="Run on device via su">▶ Run</button>
                             </div>
                             <div class="cmp-label muted small">${fmt.esc(cmd.label)}</div>
+                            <pre class="cmp-cmd-output hidden"></pre>
                         </div>
                     `).join('')}
                     ${supportsExtras ? `
@@ -999,8 +1000,41 @@ function renderComponentRow(c, pkg) {
                             </button>
                             <div class="cmp-extras-body hidden"></div>
                         </div>` : ''}
+                    <div class="cmp-custom">
+                        <div class="muted small cmp-custom-label">Custom command</div>
+                        <div class="cmp-custom-row">
+                            <input class="input mono small cmp-custom-input" spellcheck="false"
+                                   value="${fmt.esc(defaultShellFor(c, pkg))}"
+                                   placeholder="adb shell …">
+                            <button class="btn ghost small cmp-custom-copy" title="Copy">copy</button>
+                            <button class="btn small cmp-custom-run" title="Run on device">▶ Run</button>
+                        </div>
+                        <pre class="cmp-cmd-output hidden cmp-custom-output"></pre>
+                    </div>
                 </div>` : ''}
         </div>`;
+}
+
+/**
+ * Returns a sensible default adb shell command to pre-fill the custom
+ * command input for a given component type.
+ */
+function defaultShellFor(c, pkg) {
+    const target = pkg + '/' + c.name;
+    switch (c.type) {
+        case 'activity':
+            return `adb shell am start -n ${target}`;
+        case 'service':
+            return `adb shell am startservice -n ${target}`;
+        case 'receiver':
+            return `adb shell am broadcast -n ${target}`;
+        case 'provider':
+            return c.authority
+                ? `adb shell content query --uri content://${c.authority}/`
+                : `adb shell content query --uri content://`;
+        default:
+            return `adb shell am start -n ${target}`;
+    }
 }
 
 /**
@@ -1055,10 +1089,69 @@ function buildAdbCommands(c, pkg) {
         add(`am broadcast -n ${target}`, 'Broadcast to receiver directly');
 
     } else if (c.type === 'provider' && c.authority) {
-        add(`content query --uri content://${c.authority}/`, 'Query provider root');
-        add(`content query --uri content://${c.authority}/PATH`, 'Query a path (edit PATH)');
-        add(`content read --uri content://${c.authority}/PATH`, 'Read data from a path (edit PATH)');
-        add(`content insert --uri content://${c.authority}/PATH --bind col:s:value`, 'Insert a row (edit PATH/col)');
+        const auth = c.authority;
+        const paths = c.providerPaths || [];
+
+        if (paths.length) {
+            // Rich commands using actual table/column data from DEX scan.
+            paths.forEach(p => {
+                const uri = `content://${auth}/${p.path}`;
+                const cols = (p.columns || []);
+                const colList = cols.length ? cols.join(', ') : null;
+
+                add(`content query --uri ${uri}`, `Query ${p.path}`);
+
+                if (p.path.includes('#')) {
+                    // Path pattern with ID — generate a concrete ID-based query.
+                    const base = p.path.replace('/#', '');
+                    add(`content query --uri content://${auth}/${base}/1`, `Query ${base} by id=1`);
+                }
+
+                if (cols.length) {
+                    // Insert with actual column bindings.
+                    const binds = cols
+                        .filter(col => col !== 'id')
+                        .map(col => `--bind ${col}:s:test_value`)
+                        .join(' ');
+                    if (binds) {
+                        const insertUri = `content://${auth}/${p.path.replace('/#', '')}`;
+                        add(`content insert --uri ${insertUri} ${binds}`,
+                            `Insert into ${p.path.replace('/#', '')} (${cols.filter(c => c !== 'id').join(', ')})`);
+                    }
+
+                    // Update a row.
+                    if (p.path.includes('#')) {
+                        const base = p.path.replace('/#', '');
+                        const firstCol = cols.find(c => c !== 'id');
+                        if (firstCol) {
+                            add(`content update --uri content://${auth}/${base}/1 --bind ${firstCol}:s:new_value`,
+                                `Update ${base} id=1 (${firstCol})`);
+                        }
+                    }
+
+                    // Delete a row.
+                    if (p.path.includes('#')) {
+                        const base = p.path.replace('/#', '');
+                        add(`content delete --uri content://${auth}/${base}/1`,
+                            `Delete from ${base} where id=1`);
+                    }
+                }
+            });
+
+            // Projection query for the first non-ID table.
+            const firstTable = paths.find(p => !p.path.includes('#'));
+            if (firstTable && firstTable.columns.length) {
+                const cols = firstTable.columns.join(',');
+                add(`content query --uri content://${auth}/${firstTable.path} --projection ${cols}`,
+                    `Query ${firstTable.path} columns: ${firstTable.columns.join(', ')}`);
+            }
+        } else {
+            // Fallback: generic commands when no DEX info available.
+            add(`content query --uri content://${auth}/`, 'Query provider root');
+            add(`content query --uri content://${auth}/PATH`, 'Query a path (edit PATH)');
+            add(`content read --uri content://${auth}/PATH`, 'Read data from a path (edit PATH)');
+            add(`content insert --uri content://${auth}/PATH --bind col:s:value`, 'Insert a row (edit PATH/col)');
+        }
     }
     return out;
 }
@@ -1088,27 +1181,72 @@ function wireComponentActions(pkg) {
     $$('.cmp-run').forEach(b => b.onclick = async () => {
         const shell = b.dataset.shell;
         if (!shell) return;
-        if (!confirm(`Run on device?\n\n${shell}`)) return;
+        // Find the output panel for this command row.
+        const row = b.closest('.cmp-cmd');
+        const out = row?.querySelector('.cmp-cmd-output');
         b.disabled = true;
         const orig = b.textContent;
         b.textContent = '…';
+        if (out) { out.textContent = 'Running…'; out.classList.remove('hidden', 'cmp-out-ok', 'cmp-out-err'); }
         try {
             const r = await api.post('/api/live/exec', { command: shell });
-            const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
-            if (r.code === 0) {
-                toast('Launched (exit 0)' + (out ? ': ' + out.slice(0, 120) : ''), 'ok');
-            } else {
-                toast(`exit ${r.code}: ${out.slice(0, 160) || 'no output'}`, 'err');
+            const result = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+            if (out) {
+                out.textContent = result || `(exit ${r.code}, no output)`;
+                out.classList.toggle('cmp-out-ok',  r.code === 0);
+                out.classList.toggle('cmp-out-err', r.code !== 0);
+                out.classList.remove('hidden');
             }
+            if (r.code !== 0) toast(`exit ${r.code}`, 'err');
         } catch (e) {
-            toast(e.message, 'err');
+            if (out) { out.textContent = e.message; out.classList.add('cmp-out-err'); out.classList.remove('hidden'); }
+            else toast(e.message, 'err');
         } finally {
             b.disabled = false;
             b.textContent = orig;
         }
     });
 
-    // Extras builder — scan the component's DEX for extras, render inputs.
+    // Custom command rows — editable input with copy + run.
+    $$('.cmp-custom').forEach(box => {
+        const input  = box.querySelector('.cmp-custom-input');
+        const outEl  = box.querySelector('.cmp-custom-output');
+        const copyBtn = box.querySelector('.cmp-custom-copy');
+        const runBtn  = box.querySelector('.cmp-custom-run');
+
+        copyBtn.onclick = () => {
+            const val = input.value.trim();
+            if (!val) return;
+            navigator.clipboard?.writeText(val).then(
+                () => toast('Copied', 'ok'), () => toast('Copy failed', 'err'));
+        };
+
+        runBtn.onclick = async () => {
+            // Strip leading "adb shell " if present — /api/live/exec runs on-device.
+            const raw   = input.value.trim();
+            const shell = raw.startsWith('adb shell ') ? raw.slice(10) : raw;
+            if (!shell) return;
+            runBtn.disabled = true; runBtn.textContent = '…';
+            outEl.textContent = 'Running…';
+            outEl.classList.remove('hidden', 'cmp-out-ok', 'cmp-out-err');
+            try {
+                const r = await api.post('/api/live/exec', { command: shell });
+                const result = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+                outEl.textContent = result || `(exit ${r.code}, no output)`;
+                outEl.classList.toggle('cmp-out-ok',  r.code === 0);
+                outEl.classList.toggle('cmp-out-err', r.code !== 0);
+                if (r.code !== 0) toast(`exit ${r.code}`, 'err');
+            } catch (e) {
+                outEl.textContent = e.message;
+                outEl.classList.add('cmp-out-err');
+            } finally {
+                runBtn.disabled = false; runBtn.textContent = '▶ Run';
+            }
+        };
+
+        // Run on Enter key in the input.
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') runBtn.click(); });
+    });
     $$('.cmp-extras').forEach(box => {
         const loadBtn = box.querySelector('.cmp-extras-load');
         const body    = box.querySelector('.cmp-extras-body');
@@ -1201,14 +1339,23 @@ function renderExtrasBuilder(box, body, extras) {
     body.querySelector('.cmp-extras-run').onclick = async () => {
         const shell = cmdOut.dataset.shell;
         if (!shell) return;
-        if (!confirm(`Run on device?\n\n${shell}`)) return;
+        const outEl = body.querySelector('.cmp-extras-output');
+        const btn   = body.querySelector('.cmp-extras-run');
+        btn.disabled = true; btn.textContent = '…';
+        if (outEl) { outEl.textContent = 'Running…'; outEl.classList.remove('hidden', 'cmp-out-ok', 'cmp-out-err'); }
         try {
             const r = await api.post('/api/live/exec', { command: shell });
-            const out = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
-            toast(r.code === 0 ? ('Launched (exit 0)' + (out ? ': ' + out.slice(0,120) : ''))
-                               : `exit ${r.code}: ${out.slice(0,160) || 'no output'}`,
-                  r.code === 0 ? 'ok' : 'err');
-        } catch (e) { toast(e.message, 'err'); }
+            const result = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+            if (outEl) {
+                outEl.textContent = result || `(exit ${r.code}, no output)`;
+                outEl.classList.toggle('cmp-out-ok',  r.code === 0);
+                outEl.classList.toggle('cmp-out-err', r.code !== 0);
+            }
+            if (r.code !== 0) toast(`exit ${r.code}`, 'err');
+        } catch (e) {
+            if (outEl) { outEl.textContent = e.message; outEl.classList.add('cmp-out-err'); }
+            else toast(e.message, 'err');
+        } finally { btn.disabled = false; btn.textContent = '▶ Run'; }
     };
 
     rebuild();
@@ -1234,8 +1381,9 @@ function extrasBuilderControls() {
         <code class="cmp-cmd-text cmp-extras-cmd" style="margin-top:8px"></code>
         <div class="cmp-cmd-actions">
             <button class="btn ghost small cmp-extras-copy">copy</button>
-            <button class="btn small cmp-extras-run">▶ Launch</button>
-        </div>`;
+            <button class="btn small cmp-extras-run">▶ Run</button>
+        </div>
+        <pre class="cmp-cmd-output hidden cmp-extras-output"></pre>`;
 }
 function initComponents() {
     once('components', () => {

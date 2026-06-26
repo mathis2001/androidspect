@@ -4,10 +4,19 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
 import android.content.res.XmlResourceParser
+import com.android.tools.smali.dexlib2.DexFileFactory
+import com.android.tools.smali.dexlib2.Opcodes
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.xmlpull.v1.XmlPullParser
+import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * Enumerates activities, services, receivers and providers of a target package,
@@ -53,6 +62,13 @@ class ComponentInspector(private val context: Context) {
             parseIntentFilters(pkg.applicationInfo?.sourceDir, packageName)
         }.getOrDefault(emptyMap())
 
+        // Enrich providers with path/column hints from DEX (UriMatcher.addURI calls + static fields).
+        val apkPath = pkg.applicationInfo?.sourceDir
+        val providerPathMap = if (apkPath != null) {
+            runCatching { scanProviderPaths(apkPath, pkg.providers?.map { it.name } ?: emptyList()) }
+                .getOrDefault(emptyMap())
+        } else emptyMap()
+
         fun build(names: List<String>, type: String): List<Component> = names.map { rawName ->
             val fqName = if (rawName.startsWith(".")) packageName + rawName else rawName
             Component(
@@ -62,7 +78,8 @@ class ComponentInspector(private val context: Context) {
                 authority = authorityMap[rawName],
                 readPermission = readPermMap[rawName],
                 writePermission = writePermMap[rawName],
-                filters = filters[rawName] ?: filters[fqName] ?: emptyList()
+                filters = filters[rawName] ?: filters[fqName] ?: emptyList(),
+                providerPaths = if (type == "provider") providerPathMap[rawName] ?: providerPathMap[fqName] ?: emptyList() else emptyList()
             )
         }
 
@@ -231,6 +248,133 @@ class ComponentInspector(private val context: Context) {
             )
         }
     }
+
+    /**
+     * Scans DEX for ContentProvider metadata:
+     *   - UriMatcher.addURI calls → path patterns (e.g. "user_pins", "user_pins/#")
+     *   - Static String fields in the provider class → column names
+     *
+     * Returns a map of provider class name → list of ProviderPath.
+     * Column names are heuristically filtered: short (≤32 chars), lowercase/underscore,
+     * not matching common non-column field names.
+     */
+    private fun scanProviderPaths(apkPath: String, providerNames: List<String>): Map<String, List<ProviderPath>> {
+        val result = HashMap<String, MutableList<ProviderPath>>()
+        val providerTypes = providerNames.map { n ->
+            "L${n.replace('.', '/')};".let { if (it.startsWith("L.")) it.drop(1) else it }
+        }.toSet()
+
+        ZipFile(apkPath).use { zip ->
+            zip.entries().asSequence().filter { it.name.endsWith(".dex") }.forEach { entry ->
+                val tmp = File.createTempFile("cp_scan_", ".dex",
+                    File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp"))
+                try {
+                    zip.getInputStream(entry).use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                    val dex = DexFileFactory.loadDexFile(tmp, Opcodes.getDefault())
+
+                    for (cls in dex.classes) {
+                        if (cls.type !in providerTypes) continue
+                        val className = cls.type.removePrefix("L").removeSuffix(";").replace('/', '.')
+
+                        // Collect static String fields that look like table/column names.
+                        val staticStrings = cls.staticFields
+                            .filter { f -> f.type.toString() == "Ljava/lang/String;" }
+                            .mapNotNull { f ->
+                                val v = f.initialValue?.toString()?.trim('"') ?: return@mapNotNull null
+                                if (v.length in 1..40 &&
+                                    v.matches(Regex("[a-z][a-z0-9_]*")) &&
+                                    v !in SKIP_FIELD_VALUES) v else null
+                            }
+                            .distinct()
+
+                        // Single pass over all methods scanning for all path-revealing patterns:
+                        //   1. content:// URI strings  — e.g. Uri.parse("content://auth/table") in <clinit>
+                        //   2. UriMatcher.addURI calls — path patterns
+                        //   3. SQLiteQueryBuilder.setTables — table name
+                        //   4. SQLiteDatabase.query/insert/update/delete — first string arg is table
+                        val contentUriPaths = mutableListOf<String>()
+                        val uriMatcherPaths = mutableListOf<String>()
+                        val tablePaths      = mutableListOf<String>()
+
+                        for (method in cls.methods) {
+                            val impl = method.implementation ?: continue
+                            val lastStrings = ArrayDeque<String>(3)
+
+                            for (insn in impl.instructions) {
+                                if (insn is Instruction21c) {
+                                    val ref = insn.reference
+                                    if (ref is StringReference) {
+                                        val sv = ref.string.toString()
+                                        lastStrings.addLast(sv)
+                                        if (lastStrings.size > 3) lastStrings.removeFirst()
+                                        // Extract path from content:// URI literal.
+                                        if (sv.startsWith("content://")) {
+                                            val afterScheme = sv.removePrefix("content://")
+                                            val slashIdx = afterScheme.indexOf('/')
+                                            if (slashIdx >= 0) {
+                                                val path = afterScheme.substring(slashIdx + 1).trimEnd('/')
+                                                if (path.isNotBlank() && isTableName(path.substringBefore('/')))
+                                                    contentUriPaths.add(path)
+                                            }
+                                        }
+                                    }
+                                }
+                                val ref = (insn as? ReferenceInstruction)?.reference
+                                if (ref is MethodReference) {
+                                    val mName  = ref.name.toString()
+                                    val mClass = ref.definingClass.toString()
+                                    when {
+                                        mName == "addURI" && mClass == "Landroid/content/UriMatcher;" ->
+                                            lastStrings.lastOrNull()
+                                                ?.takeIf { it.isNotBlank() && !it.contains("://") }
+                                                ?.let { uriMatcherPaths.add(it) }
+                                        mName == "setTables" && mClass == "Landroid/database/sqlite/SQLiteQueryBuilder;" ->
+                                            lastStrings.lastOrNull()?.takeIf { isTableName(it) }
+                                                ?.let { tablePaths.add(it) }
+                                        mName in setOf("query","insert","update","delete") &&
+                                        mClass == "Landroid/database/sqlite/SQLiteDatabase;" ->
+                                            lastStrings.firstOrNull { isTableName(it) }
+                                                ?.let { tablePaths.add(it) }
+                                    }
+                                }
+                            }
+                        }
+                        // Merge all path sources: UriMatcher > content:// URIs > setTables > direct DB calls.
+                        val allPaths = (uriMatcherPaths + contentUriPaths + tablePaths).distinct()
+                            .filter { it.isNotBlank() }
+
+                        if (allPaths.isNotEmpty() || staticStrings.isNotEmpty()) {
+                            val providerPaths = allPaths.map { path ->
+                                ProviderPath(
+                                    path = path,
+                                    columns = staticStrings.filter { col ->
+                                        col != path && !col.contains("://") && col != "id"
+                                    }
+                                )
+                            }.ifEmpty {
+                                staticStrings.map { ProviderPath(path = it, columns = staticStrings) }
+                            }
+                            result.getOrPut(className) { mutableListOf() }.addAll(providerPaths)
+                        }
+                    }
+                } catch (_: Exception) {}
+                finally { tmp.delete() }
+            }
+        }
+        return result
+    }
+
+    private fun isTableName(s: String): Boolean =
+        s.length in 2..64 && s.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*")) &&
+        s !in SKIP_FIELD_VALUES && !s.contains("://")
+
+    companion object {
+        private val SKIP_FIELD_VALUES = setOf(
+            "id", "asc", "desc", "null", "true", "false",
+            "content", "android", "app", "com", "org", "net",
+            "onCreate", "onUpgrade", "db", "mDB", "database"
+        )
+    }
 }
 
 @Serializable
@@ -260,7 +404,14 @@ data class Component(
     val authority: String? = null,            // providers only
     val readPermission: String? = null,       // providers only
     val writePermission: String? = null,      // providers only
-    val filters: List<IntentFilter> = emptyList()
+    val filters: List<IntentFilter> = emptyList(),
+    val providerPaths: List<ProviderPath> = emptyList()  // providers only — table/path hints from DEX
+)
+
+@Serializable
+data class ProviderPath(
+    val path: String,          // e.g. "user_pins" or "user_pins/#"
+    val columns: List<String> = emptyList()  // column names found in the same class
 )
 
 @Serializable
