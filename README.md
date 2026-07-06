@@ -24,9 +24,9 @@ Per-package static inspection and dynamic tests:
 * A markdown editor to take notes directly through the web interface.
 * A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring).
 * A multi-provider (Claude, Gemini, GPT...) Cloud conversational AI that have access to some internal cache files like packages smali/java code, markdown notes, snapshots etc. Can help for:
-** Security code review
-** Reports writing
-** Diff analysis
+  * Security code review
+  * Reports writing
+  * Diff analysis
 
 Live runtime:
 
