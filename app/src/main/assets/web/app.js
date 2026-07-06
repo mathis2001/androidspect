@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay','fridascripts'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay','fridascripts','aichat'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -3871,9 +3871,318 @@ async function fsSaveCustom() {
 }
 
 
+// ============== AI ASSISTANT tab ==============
+let aiMessages       = [];   // { role, content }
+let aiAttachments    = [];   // { name, path, content }
+let aiProviders      = [];
+let aiSelectedProv   = null;
+
+function initAichat() {
+    once('aichat', () => {
+        // Send button + Ctrl+Enter
+        $('#ai-send').addEventListener('click', aiSend);
+        $('#ai-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiSend(); }
+        });
+        // Provider management
+        $('#ai-provider-manage').addEventListener('click', () => {
+            aiRenderProviderList();
+            $('#ai-provider-modal').classList.remove('hidden');
+        });
+        $('#ai-modal-close').addEventListener('click', () => $('#ai-provider-modal').classList.add('hidden'));
+        $('#ai-provider-modal').addEventListener('click', e => {
+            if (e.target === $('#ai-provider-modal')) $('#ai-provider-modal').classList.add('hidden');
+        });
+        $('#ai-provider-sel').addEventListener('change', () => {
+            aiSelectedProv = $('#ai-provider-sel').value || null;
+        });
+        $('#ai-prov-type').addEventListener('change', () => {
+            $('#ai-prov-url').style.display = $('#ai-prov-type').value === 'custom' ? '' : 'none';
+        });
+        $('#ai-prov-save').addEventListener('click',  aiSaveProvider);
+        $('#ai-prov-clear').addEventListener('click', aiClearProviderForm);
+        $('#ai-files-refresh').addEventListener('click', aiLoadFiles);
+        $('#ai-files-search').addEventListener('input', aiFilterFiles);
+    });
+    aiLoadProviders();
+    aiLoadFiles();
+    // Reset conversation when package changes.
+    aiMessages = []; aiAttachments = [];
+    aiRenderAttachments();
+    aiAddSystemWelcome();
+}
+function refreshAichat() { aiLoadFiles(); }
+
+// ── Welcome message ────────────────────────────────────────────────────────────
+function aiAddSystemWelcome() {
+    const pkg = S.pkg ? `Currently targeting **${S.pkg}**.` : 'Select an app from the sidebar first.';
+    aiMessages = [{ role: 'assistant', content:
+        `Hello! I'm your Android security assistant.\n\n${pkg}\n\n` +
+        `I can help you:\n` +
+        `- Analyse decompiled Smali/Java code for vulnerabilities\n` +
+        `- Compare app snapshots to detect changes\n` +
+        `- Review network captures and exported components\n` +
+        `- Draft pentest report findings\n\n` +
+        `Attach files from the left panel or just ask a question.`
+    }];
+    aiRenderMessages();
+}
+
+// ── Provider management ────────────────────────────────────────────────────────
+async function aiLoadProviders() {
+    try {
+        aiProviders = await api.get('/api/ai/providers');
+        const sel = $('#ai-provider-sel');
+        sel.innerHTML = '<option value="">— select a provider —</option>' +
+            aiProviders.map(p => `<option value="${fmt.esc(p.id)}">${fmt.esc(p.name)}</option>`).join('');
+        if (aiSelectedProv) sel.value = aiSelectedProv;
+    } catch (_) {}
+}
+
+function aiRenderProviderList() {
+    const list = $('#ai-provider-list');
+    if (!aiProviders.length) { list.innerHTML = '<div class="muted small">No providers configured yet.</div>'; return; }
+    list.innerHTML = aiProviders.map(p => `
+        <div class="ai-prov-row">
+            <span class="ai-prov-name">${fmt.esc(p.name)}</span>
+            <span class="tg muted">${fmt.esc(p.type)}</span>
+            <span class="tg muted">${fmt.esc(p.model || 'default')}</span>
+            <button class="btn ghost small ai-prov-edit" data-id="${fmt.esc(p.id)}">Edit</button>
+            <button class="btn ghost small danger ai-prov-del"  data-id="${fmt.esc(p.id)}">Delete</button>
+        </div>`).join('');
+    $$('.ai-prov-edit', list).forEach(b => b.onclick = () => aiEditProvider(b.dataset.id));
+    $$('.ai-prov-del',  list).forEach(b => b.onclick = () => aiDeleteProvider(b.dataset.id));
+}
+
+function aiEditProvider(id) {
+    const p = aiProviders.find(x => x.id === id);
+    if (!p) return;
+    $('#ai-prov-id').value    = p.id;
+    $('#ai-prov-name').value  = p.name;
+    $('#ai-prov-type').value  = p.type;
+    $('#ai-prov-key').value   = '';   // don't prefill masked key
+    $('#ai-prov-model').value = p.model || '';
+    $('#ai-prov-url').value   = p.baseUrl || '';
+    $('#ai-prov-url').style.display = p.type === 'custom' ? '' : 'none';
+}
+
+async function aiDeleteProvider(id) {
+    if (!confirm('Delete this provider?')) return;
+    try {
+        await api.del(`/api/ai/providers/${encodeURIComponent(id)}`);
+        await aiLoadProviders();
+        aiRenderProviderList();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function aiSaveProvider() {
+    const name  = $('#ai-prov-name').value.trim();
+    const type  = $('#ai-prov-type').value;
+    const key   = $('#ai-prov-key').value.trim();
+    const model = $('#ai-prov-model').value.trim();
+    const url   = $('#ai-prov-url').value.trim();
+    const existingId = $('#ai-prov-id').value.trim();
+
+    // Client-side validation.
+    if (!name)  { toast('Display name is required', 'err'); $('#ai-prov-name').focus();  return; }
+    if (!model) { toast('Model is required (e.g. claude-opus-4-6)', 'err'); $('#ai-prov-model').focus(); return; }
+    if (type !== 'custom' && !key)  { toast('API key is required', 'err'); $('#ai-prov-key').focus(); return; }
+    if (type === 'custom' && !url)  { toast('Base URL is required for custom providers', 'err'); $('#ai-prov-url').focus(); return; }
+
+    const id = existingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32);
+    try {
+        const resp = await fetchAuthed(`/api/ai/providers/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name, type, apiKey: key, model, baseUrl: url || null })
+        });
+        const d = await resp.json();
+        if (!resp.ok) { toast(d.error || 'Save failed', 'err'); return; }
+        await aiLoadProviders();
+        aiRenderProviderList();
+        aiClearProviderForm();
+        toast('Provider saved', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+function aiClearProviderForm() {
+    ['ai-prov-id','ai-prov-name','ai-prov-key','ai-prov-model','ai-prov-url'].forEach(id => $('#' + id).value = '');
+    $('#ai-prov-id').value = '';
+    $('#ai-prov-type').value = 'anthropic';
+    $('#ai-prov-url').style.display = 'none';
+}
+
+// ── File browser ───────────────────────────────────────────────────────────────
+let aiAllFiles = [];
+
+async function aiLoadFiles() {
+    const pkg = S.pkg || '';
+    try {
+        aiAllFiles = await api.get(`/api/ai/files?pkg=${encodeURIComponent(pkg)}`);
+        aiRenderFiles(aiAllFiles);
+    } catch (e) {
+        $('#ai-files-list').innerHTML = `<div class="muted small" style="padding:8px;color:var(--red)">${fmt.esc(e.message)}</div>`;
+    }
+}
+
+function aiFilterFiles() {
+    const q = $('#ai-files-search').value.trim().toLowerCase();
+    aiRenderFiles(q ? aiAllFiles.filter(f => f.name.toLowerCase().includes(q) || f.category.toLowerCase().includes(q)) : aiAllFiles);
+}
+
+function aiRenderFiles(files) {
+    const el = $('#ai-files-list');
+    if (!files.length) { el.innerHTML = '<div class="muted small" style="padding:8px">No files found.</div>'; return; }
+    const byCategory = {};
+    files.forEach(f => (byCategory[f.category] = byCategory[f.category] || []).push(f));
+    el.innerHTML = Object.entries(byCategory).map(([cat, fs]) => `
+        <div class="ai-file-cat">${fmt.esc(cat)}</div>
+        ${fs.map(f => `
+            <div class="ai-file-row" title="${fmt.esc(f.path)}">
+                <span class="ai-file-name">${fmt.esc(f.name)}</span>
+                <span class="ai-file-size muted">${aiFmtSize(f.size)}</span>
+                <button class="btn ghost small ai-attach-btn" data-path="${fmt.esc(f.path)}" data-name="${fmt.esc(f.name)}">Attach</button>
+            </div>`).join('')}
+    `).join('');
+    $$('.ai-attach-btn', el).forEach(b => b.onclick = () => aiAttachFile(b.dataset.path, b.dataset.name));
+}
+
+async function aiAttachFile(path, name) {
+    if (aiAttachments.some(a => a.path === path)) { toast('Already attached', 'err'); return; }
+    try {
+        const d = await api.get(`/api/ai/files/content?path=${encodeURIComponent(path)}`);
+        aiAttachments.push({ name, path, content: d.content, size: d.size });
+        aiRenderAttachments();
+        toast(`Attached: ${name}`, 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+function aiRenderAttachments() {
+    const el = $('#ai-attachments');
+    if (!aiAttachments.length) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = aiAttachments.map((a, i) => `
+        <div class="ai-att-chip">
+            <span>📎 ${fmt.esc(a.name)}</span>
+            <span class="muted">${aiFmtSize(a.size)}</span>
+            <button class="ai-att-rm" data-i="${i}">✕</button>
+        </div>`).join('');
+    $$('.ai-att-rm', el).forEach(b => b.onclick = () => {
+        aiAttachments.splice(+b.dataset.i, 1); aiRenderAttachments();
+    });
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────────
+async function aiSend() {
+    const text = $('#ai-input').value.trim();
+    if (!text && !aiAttachments.length) return;
+    if (!aiSelectedProv) {
+        toast('Select a provider first', 'err');
+        $('#ai-provider-modal').classList.remove('hidden');
+        return;
+    }
+
+    // Build user message — inject attachment contents inline.
+    let userContent = text;
+    if (aiAttachments.length) {
+        const attachText = aiAttachments.map(a =>
+            `\n\n--- File: ${a.name} ---\n\`\`\`\n${a.content}\n\`\`\`\n--- End: ${a.name} ---`
+        ).join('');
+        userContent = (text ? text + '\n' : '') + attachText;
+    }
+
+    aiMessages.push({ role: 'user', content: userContent });
+    aiAttachments = [];
+    aiRenderAttachments();
+    $('#ai-input').value = '';
+    aiRenderMessages();
+    aiScrollBottom();
+
+    // Show typing indicator.
+    const typingId = 'typing-' + Date.now();
+    aiMessages.push({ role: 'assistant', content: '…', _typing: true, _id: typingId });
+    aiRenderMessages();
+    aiScrollBottom();
+
+    const sendBtn = $('#ai-send');
+    sendBtn.disabled = true; sendBtn.textContent = '…';
+
+    try {
+        const resp = await api.post('/api/ai/chat', {
+            providerId:    aiSelectedProv,
+            messages:      aiMessages.filter(m => !m._typing).map(m => ({ role: m.role, content: m.content })),
+            packageName:   S.pkg || '',
+            systemContext: ''
+        });
+
+        // Remove typing indicator.
+        aiMessages = aiMessages.filter(m => !m._typing);
+
+        if (resp.error) {
+            aiMessages.push({ role: 'assistant', content: `⚠ Error: ${resp.error}`, _error: true });
+        } else {
+            aiMessages.push({ role: 'assistant', content: resp.content, toolCalls: resp.toolCalls || [] });
+        }
+    } catch (e) {
+        aiMessages = aiMessages.filter(m => !m._typing);
+        aiMessages.push({ role: 'assistant', content: `⚠ ${e.message}`, _error: true });
+    } finally {
+        sendBtn.disabled = false; sendBtn.textContent = 'Send';
+        aiRenderMessages();
+        aiScrollBottom();
+    }
+}
+
+function aiRenderMessages() {
+    const el = $('#ai-messages');
+    el.innerHTML = aiMessages.map(m => {
+        const isUser   = m.role === 'user';
+        const isTyping = m._typing;
+        const isError  = m._error;
+
+        // Render tool calls as collapsible trace above assistant bubble.
+        let toolHtml = '';
+        if (m.toolCalls && m.toolCalls.length) {
+            toolHtml = '<div class="ai-tool-trace">' +
+                m.toolCalls.map(tc =>
+                    `<div class="ai-tool-call">` +
+                    `<span class="ai-tool-name">🔧 ${fmt.esc(tc.name)}(<code>${fmt.esc(tc.arguments.path || '')}</code>)</span>` +
+                    `<details><summary class="muted small">Result</summary>` +
+                    `<pre class="ai-tool-result">${fmt.esc((tc.result || '').slice(0, 2000))}</pre>` +
+                    `</details></div>`
+                ).join('') +
+            '</div>';
+        }
+
+        let html = fmt.esc(m.content)
+            .replace(/```([\s\S]*?)```/g, '<pre class="ai-code">$1</pre>')
+            .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+
+        return `<div class="ai-msg ai-msg-${isUser ? 'user' : 'assistant'}${isError ? ' ai-msg-error' : ''}${isTyping ? ' ai-msg-typing' : ''}">
+            ${toolHtml}
+            <div class="ai-msg-bubble">${html}</div>
+        </div>`;
+    }).join('');
+}
+
+function aiScrollBottom() {
+    const el = $('#ai-messages');
+    setTimeout(() => { el.scrollTop = el.scrollHeight; }, 30);
+}
+
+function aiFmtSize(b) {
+    if (!b) return '';
+    if (b < 1024) return b + 'B';
+    if (b < 1048576) return (b/1024).toFixed(0) + 'KB';
+    return (b/1048576).toFixed(1) + 'MB';
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

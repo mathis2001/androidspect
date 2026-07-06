@@ -6,6 +6,7 @@ import com.androidspect.root.AppDataReader
 import com.androidspect.server.routes.appRoutes
 import com.androidspect.server.routes.assetRoutes
 import com.androidspect.server.routes.decompilerRoutes
+import com.androidspect.server.routes.aiChatRoutes
 import com.androidspect.server.routes.clipboardRoutes
 import com.androidspect.server.routes.envSetupRoutes
 import com.androidspect.server.routes.fridaScriptRoutes
@@ -176,6 +177,7 @@ class AndroidSpectServer(
                 overlayRoutes(context)
                 screenshotRoutes(context)
                 clipboardRoutes(context)
+                aiChatRoutes(context)
                 fridaScriptRoutes(context)
                 envSetupRoutes(context)
                 assetRoutes(context)

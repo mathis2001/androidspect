@@ -169,7 +169,8 @@
                 <a class="main-tab tab" data-tab="web"       role="tab"><svg class="ic ic-sm"><use href="#i-globe"/></svg>Web</a>
                 <a class="main-tab tab" data-tab="overlay"   role="tab"><svg class="ic ic-sm"><use href="#i-layers"/></svg>Overlay</a>
                 <a class="main-tab tab" data-tab="fridascripts" role="tab"><svg class="ic ic-sm"><use href="#i-zap"/></svg>Frida Scripts</a>
-                <a class="main-tab tab" data-tab="snapshots" role="tab"><svg class="ic ic-sm"><use href="#i-camera"/></svg>Snapshots</a>
+                <a class="main-tab tab" data-tab="aichat"       role="tab"><svg class="ic ic-sm"><use href="#i-cpu"/></svg>AI Assistant</a>
+                <a class="main-tab tab" data-tab="snapshots"    role="tab"><svg class="ic ic-sm"><use href="#i-camera"/></svg>Snapshots</a>
             </nav>
 
             <div class="panels">
@@ -614,6 +615,70 @@
                             </div>
 
                         </div><!-- /fs-main -->
+                    </div>
+                </section>
+
+                <!-- AI ASSISTANT -->
+                <section class="panel hidden" data-tab="aichat">
+                    <div class="ai-layout">
+
+                        <!-- Left: config + file picker -->
+                        <div class="ai-sidebar">
+                            <div class="ai-sidebar-section">
+                                <div class="ai-sidebar-h">Provider</div>
+                                <select class="input small" id="ai-provider-sel" style="width:100%">
+                                    <option value="">— select a provider —</option>
+                                </select>
+                                <button class="btn ghost small" id="ai-provider-manage" style="width:100%;margin-top:4px">⚙ Manage providers</button>
+                            </div>
+
+                            <div class="ai-sidebar-section" style="flex:1;min-height:0;display:flex;flex-direction:column">
+                                <div class="ai-sidebar-h">
+                                    Context files
+                                    <button class="btn ghost small" id="ai-files-refresh" style="margin-left:auto;padding:1px 6px" title="Refresh">↻</button>
+                                </div>
+                                <input class="input small" id="ai-files-search" placeholder="Filter files…" style="margin-bottom:4px">
+                                <div id="ai-files-list" class="ai-files-list"></div>
+                            </div>
+                        </div>
+
+                        <!-- Right: chat -->
+                        <div class="ai-chat-area">
+                            <div id="ai-messages" class="ai-messages"></div>
+                            <div class="ai-input-row">
+                                <div id="ai-attachments" class="ai-attachments hidden"></div>
+                                <div class="ai-input-bar">
+                                    <textarea id="ai-input" class="ai-textarea" placeholder="Ask about the app, request analysis, compare snapshots…" rows="2"></textarea>
+                                    <button class="btn small" id="ai-send" title="Send (Ctrl+Enter)">Send</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Provider config modal -->
+                    <div id="ai-provider-modal" class="ai-modal hidden">
+                        <div class="ai-modal-box">
+                            <div class="ai-modal-h">Manage AI Providers <button class="btn ghost small" id="ai-modal-close">✕</button></div>
+                            <div id="ai-provider-list" class="ai-provider-list"></div>
+                            <div class="ai-modal-h" style="margin-top:14px">Add / edit provider</div>
+                            <div class="ai-provider-form">
+                                <input class="input small" id="ai-prov-id"   placeholder="ID (e.g. claude-main)" style="display:none">
+                                <input class="input small" id="ai-prov-name" placeholder="Display name">
+                                <select class="input small" id="ai-prov-type">
+                                    <option value="anthropic">Anthropic (Claude)</option>
+                                    <option value="openai">OpenAI (GPT)</option>
+                                    <option value="gemini">Google (Gemini)</option>
+                                    <option value="custom">Custom / Ollama / LM Studio</option>
+                                </select>
+                                <input class="input mono small" id="ai-prov-key"   placeholder="API Key (leave blank for local)">
+                                <input class="input mono small" id="ai-prov-model" placeholder="Model (e.g. claude-opus-4-6, gpt-4o, gemini-1.5-flash, llama3)">
+                                <input class="input mono small" id="ai-prov-url"   placeholder="Base URL (custom only, e.g. http://localhost:11434/v1/chat/completions)" style="display:none">
+                                <div class="ai-provider-form-actions">
+                                    <button class="btn small" id="ai-prov-save">Save provider</button>
+                                    <button class="btn ghost small" id="ai-prov-clear">Clear form</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
