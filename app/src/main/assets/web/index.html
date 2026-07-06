@@ -632,6 +632,15 @@
                                 <button class="btn ghost small" id="ai-provider-manage" style="width:100%;margin-top:4px">⚙ Manage providers</button>
                             </div>
 
+                            <div class="ai-sidebar-section">
+                                <div class="ai-sidebar-h">Context prompt <span class="muted small" style="font-weight:400;text-transform:none">(optional)</span></div>
+                                <textarea id="ai-context-prompt" class="input small" rows="3"
+                                    placeholder="Extra instructions for the AI, e.g. 'Focus on authentication vulnerabilities and report in OWASP format.'"
+                                    style="resize:vertical;font-size:11px;line-height:1.4"></textarea>
+                                <div class="ai-sidebar-h" style="margin-top:6px">Max tool calls <span class="muted small" style="font-weight:400;text-transform:none">(default 8)</span></div>
+                                <input class="input small" id="ai-max-rounds" type="number" value="8" min="1" max="32" style="width:80px">
+                            </div>
+
                             <div class="ai-sidebar-section" style="flex:1;min-height:0;display:flex;flex-direction:column">
                                 <div class="ai-sidebar-h">
                                     Context files

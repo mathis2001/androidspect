@@ -20,8 +20,13 @@ Per-package static inspection and dynamic tests:
 * Extract and open deeplinks (+ potential parameters if static).
 * Extract Web related information (WebViews security assessment, URL, potential endpoints and potential parameters).
 * PoC Overlay Attacks.
+* A frida command builder based on codeShare and custom scripts.
 * A markdown editor to take notes directly through the web interface.
 * A Snapshots feature allowing to register an app content at T0 and compare it with an other snapshot at T+N (for future versions updates or local storage monitoring).
+* A multi-provider (Claude, Gemini, GPT...) Cloud conversational AI that have access to some internal cache files like packages smali/java code, markdown notes, snapshots etc. Can help for:
+** Security code review
+** Reports writing
+** Diff analysis
 
 Live runtime:
 
@@ -160,6 +165,10 @@ Overlay Attacks Capabilities
 
 ![Overlay](screenshots/19-TapJacking-PoC-Capabilities.PNG)
 
+Frida Commands builder
+
+![Frida](screenshots/22-Frida.PNG)
+
 Snapshots & Diffs
 
 ![Snapshots](screenshots/14-Snapshots.PNG)
@@ -168,6 +177,11 @@ Markdown notes feature
 
 ![Notes1](screenshots/12-notes.PNG)
 ![Notes2](screenshots/13-notes.PNG)
+
+Multi-Provider Cloud AI Assistant
+
+![AI-Review](screenshots/23-AI.PNG)
+![AI-Review](screenshots/24-AI.PNG)
 
 Process list from `/proc`.
 

@@ -170,10 +170,10 @@ private fun runAgenticLoop(
     context: Context
 ): AiChatResponse {
     val toolResults  = mutableListOf<AiToolCall>()
-    // Start with the user's message history unchanged.
     val messages     = req.messages.toMutableList()
+    val rounds       = (req.maxRounds ?: MAX_TOOL_ROUNDS).coerceIn(1, 32)
 
-    repeat(MAX_TOOL_ROUNDS) {
+    repeat(rounds) {
         val resp = dispatchToProvider(provider, req.copy(messages = messages))
 
         // Error from provider — return immediately.
@@ -565,7 +565,7 @@ private fun buildFileTree(context: Context, pkg: String): List<AiFileEntry> =
 @Serializable data class AiChatRequest(
     val providerId: String, val messages: List<AiMessage>,
     val packageName: String = "", val systemContext: String = "",
-    val maxTokens: Int? = null
+    val maxTokens: Int? = null, val maxRounds: Int? = null
 )
 
 @Serializable data class AiToolCall(val name: String, val arguments: Map<String, String>, val result: String)

@@ -4112,7 +4112,8 @@ async function aiSend() {
             providerId:    aiSelectedProv,
             messages:      aiMessages.filter(m => !m._typing).map(m => ({ role: m.role, content: m.content })),
             packageName:   S.pkg || '',
-            systemContext: ''
+            systemContext: ($('#ai-context-prompt')?.value || '').trim(),
+            maxRounds:     parseInt($('#ai-max-rounds')?.value || '8') || 8
         });
 
         // Remove typing indicator.
