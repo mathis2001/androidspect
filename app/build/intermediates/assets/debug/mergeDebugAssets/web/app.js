@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay','fridascripts'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -3682,9 +3682,198 @@ function cbStopWatch() {
     if (cbWatchInterval) { clearInterval(cbWatchInterval); cbWatchInterval = null; }
 }
 
+// ============== FRIDA SCRIPTS tab ==============
+let fsSelected = [];   // FridaScript objects
+let fsCatalog  = null;
+
+function initFridaScripts() {
+    once('fridascripts', () => {
+        $('#fs-search').addEventListener('input', () => fsRenderCatalog(fsCatalog));
+        $('#fs-reload').addEventListener('click', () => { fsCatalog = null; fsLoadCatalog(); });
+        $('#fs-mode').addEventListener('change', () => {
+            const showPid = $('#fs-mode').value === '-p';
+            $('#fs-pid').style.display = showPid ? '' : 'none';
+            fsUpdateCommand();
+        });
+        $('#fs-pid').addEventListener('input', fsUpdateCommand);
+        $('#fs-copy-cmd').addEventListener('click', () => {
+            const cmd = $('#fs-cmd').textContent;
+            navigator.clipboard?.writeText(cmd).then(() => toast('Copied', 'ok'));
+        });
+        $('#fs-clear-sel').addEventListener('click', () => {
+            fsSelected = []; fsRenderSelected(); fsUpdateCommand(); fsRenderCatalog(fsCatalog);
+        });
+        $('#fs-custom-save').addEventListener('click', fsSaveCustom);
+    });
+    fsLoadCatalog();
+    fsUpdateCommand();
+}
+function refreshFridaScripts() { fsUpdateCommand(); }
+
+async function fsLoadCatalog() {
+    if (fsCatalog) { fsRenderCatalog(fsCatalog); return; }
+    const cat = $('#fs-catalog');
+    cat.innerHTML = '<div class="muted small">Loading...</div>';
+    try {
+        fsCatalog = await api.get('/api/frida-scripts/catalog');
+        // Merge custom scripts as a category.
+        try {
+            const customs = await api.get('/api/frida-scripts/custom');
+            if (customs.length) {
+                fsCatalog = { ...fsCatalog, categories: [
+                    ...fsCatalog.categories,
+                    { id: 'custom', name: 'Custom Scripts', icon: '\u270F', scripts: customs }
+                ]};
+            }
+        } catch (_) {}
+        fsRenderCatalog(fsCatalog);
+    } catch (e) {
+        cat.innerHTML = '<div class="empty" style="color:var(--red)">' + fmt.esc(e.message) + '</div>';
+    }
+}
+
+function fsRenderCatalog(catalog) {
+    if (!catalog) return;
+    const q   = $('#fs-search').value.trim().toLowerCase();
+    const cat = $('#fs-catalog');
+    cat.innerHTML = catalog.categories.map(c => {
+        const scripts = c.scripts.filter(s =>
+            !q || s.name.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q) ||
+            s.tags.some(t => t.includes(q)));
+        if (!scripts.length) return '';
+        return '<div class="fs-cat">' +
+            '<div class="fs-cat-h">' + fmt.esc(c.icon) + ' ' + fmt.esc(c.name) + '</div>' +
+            scripts.map(s => {
+                const sel     = fsSelected.some(x => x.id === s.id);
+                const isCustom = s.tags.includes('custom');
+                return '<div class="fs-script-row' + (sel ? ' selected' : '') + '" data-id="' + fmt.esc(s.id) + '">' +
+                    '<div class="fs-script-info">' +
+                        '<div class="fs-script-name">' + fmt.esc(s.name) + '</div>' +
+                        '<div class="fs-script-desc muted small">' + fmt.esc(s.description) + '</div>' +
+                        '<div class="fs-tags">' + s.tags.map(t => '<span class="tg">' + fmt.esc(t) + '</span>').join('') + '</div>' +
+                    '</div>' +
+                    '<div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">' +
+                        (isCustom ? '<button class="btn ghost small danger fs-del-btn" data-id="' + fmt.esc(s.id) + '" title="Delete custom script">🗑</button>' : '') +
+                        '<button class="btn small fs-add-btn' + (sel ? ' fs-added' : '') + '" data-id="' + fmt.esc(s.id) + '">' +
+                            (sel ? '&#10003; Added' : '+ Add') +
+                        '</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('') +
+        '</div>';
+    }).join('');
+
+    $$('.fs-add-btn', cat).forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            const script = catalog.categories.flatMap(c => c.scripts).find(s => s.id === id);
+            if (!script) return;
+            if (fsSelected.some(s => s.id === id)) {
+                fsSelected = fsSelected.filter(s => s.id !== id);
+            } else {
+                fsSelected.push(script);
+            }
+            fsRenderCatalog(catalog);
+            fsRenderSelected();
+            fsUpdateCommand();
+        });
+    });
+
+    $$('.fs-del-btn', cat).forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!confirm('Delete this custom script?')) return;
+            try {
+                await api.del('/api/frida-scripts/custom/' + encodeURIComponent(id));
+                // Remove from selection if it was selected.
+                fsSelected = fsSelected.filter(s => s.id !== id);
+                fsCatalog = null;
+                await fsLoadCatalog();
+                fsRenderSelected();
+                fsUpdateCommand();
+                toast('Custom script deleted', 'ok');
+            } catch (e) { toast(e.message, 'err'); }
+        });
+    });
+}
+
+function fsRenderSelected() {
+    const el = $('#fs-selected');
+    $('#fs-sel-count').textContent = fsSelected.length;
+    if (!fsSelected.length) {
+        el.innerHTML = '<div class="empty muted small">Select scripts from the left to build a command.</div>';
+        return;
+    }
+    el.innerHTML = fsSelected.map((s, i) =>
+        '<div class="fs-sel-row">' +
+            '<span class="fs-sel-name">' + fmt.esc(s.name) + '</span>' +
+            (s.codeshare ? '<span class="tg muted" style="font-size:9px">' + fmt.esc(s.codeshare) + '</span>' : '<span class="tg">custom</span>') +
+            '<button class="btn ghost small fs-sel-rm" data-i="' + i + '">&#10005;</button>' +
+        '</div>'
+    ).join('');
+    $$('.fs-sel-rm', el).forEach(b => b.addEventListener('click', () => {
+        fsSelected.splice(+b.dataset.i, 1);
+        fsRenderSelected(); fsRenderCatalog(fsCatalog); fsUpdateCommand();
+    }));
+}
+
+function fsUpdateCommand() {
+    const pkg  = S.pkg || '<package>';
+    const mode = $('#fs-mode') ? $('#fs-mode').value : '-f';
+    const pid  = $('#fs-pid')  ? $('#fs-pid').value.trim() : '';
+    const target = mode === '-p' ? (pid || '<pid>') : pkg;
+
+    if (!fsSelected.length) {
+        $('#fs-cmd').textContent = 'frida -U ' + mode + ' ' + target + '  # add scripts first';
+        return;
+    }
+
+    // Separate codeshare scripts from custom ones.
+    const codeshareScripts = fsSelected.filter(s => s.codeshare);
+    const customScripts    = fsSelected.filter(s => !s.codeshare);
+
+    const parts = ['frida', '-U', mode, target];
+
+    codeshareScripts.forEach(s => parts.push('--codeshare', s.codeshare));
+    customScripts.forEach(s => parts.push('-l', s.id + '.js'));
+
+    // Build readable multi-line command.
+    const base   = 'frida -U ' + mode + ' ' + target;
+    const csArgs = codeshareScripts.map(s => '  --codeshare ' + s.codeshare).join(' \\\n');
+    const lArgs  = customScripts.map(s   => '  -l ' + s.id + '.js').join(' \\\n');
+    const allArgs = [csArgs, lArgs].filter(Boolean).join(' \\\n');
+
+    const cmd = base + ' \\\n' + allArgs +
+        (customScripts.length
+            ? '\n\n# Custom scripts must be present on your PC:\n' +
+              customScripts.map(s => '# ' + s.id + '.js').join('\n')
+            : '');
+
+    $('#fs-cmd').textContent = cmd;
+}
+
+async function fsSaveCustom() {
+    const name    = $('#fs-custom-name').value.trim();
+    const cat     = $('#fs-custom-cat').value;
+    const content = $('#fs-custom-content').value.trim();
+    const st      = $('#fs-custom-status');
+    if (!name || !content) { toast('Name and content required', 'err'); return; }
+    try {
+        await api.post('/api/frida-scripts/custom', { name, category: cat, content });
+        st.textContent = '&#10003; Saved';
+        $('#fs-custom-name').value = '';
+        $('#fs-custom-content').value = '';
+        fsCatalog = null;
+        await fsLoadCatalog();
+        toast('Custom script saved', 'ok');
+    } catch (e) { st.textContent = '&#10007; ' + e.message; toast(e.message, 'err'); }
+}
+
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

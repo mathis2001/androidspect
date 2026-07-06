@@ -1694,3 +1694,97 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
     font-size: 11.5px;
     font-family: 'JetBrains Mono', monospace;
 }
+
+/* ---- Frida Scripts tab ---- */
+.fs-layout {
+    display: flex;
+    height: 100%;
+    min-height: 0;   /* critical — lets children shrink in a flex container */
+    overflow: hidden;
+}
+
+/* ── Left: script browser ── */
+.fs-sidebar {
+    width: 280px; min-width: 220px; flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    min-height: 0; overflow: hidden;
+}
+.fs-toolbar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.fs-catalog { flex: 1; overflow-y: auto; padding: 4px 0; }
+.fs-cat     { margin-bottom: 2px; }
+.fs-cat-h   { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 12px 3px; position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.fs-script-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-left: 2px solid transparent; }
+.fs-script-row:hover { background: var(--elevated); }
+.fs-script-row.selected { border-left-color: var(--accent); background: rgba(88,166,255,.06); }
+.fs-script-info { flex: 1; min-width: 0; }
+.fs-script-name { font-size: 12px; font-weight: 600; }
+.fs-script-desc { font-size: 10.5px; line-height: 1.4; margin: 2px 0; }
+.fs-tags   { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.fs-add-btn.fs-added { background: rgba(88,166,255,.12); color: var(--accent); border-color: rgba(88,166,255,.4); }
+
+/* ── Right: two-row split ── */
+.fs-main {
+    flex: 1; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column;
+    overflow: hidden;           /* clips children; each child scrolls independently */
+}
+
+/* Top box: selected + command — fixed height, scrollable internally */
+.fs-top-box {
+    flex-shrink: 0;             /* does NOT grow to fill; takes natural height */
+    max-height: 55%;            /* caps it so custom form always has room */
+    overflow-y: auto;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+}
+
+/* Bottom box: custom form — takes the rest, scrollable */
+.fs-bottom-box {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+}
+
+.fs-section-h {
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px;
+    flex-shrink: 0;
+}
+.fs-selected-list { display: flex; flex-direction: column; gap: 4px; }
+.fs-sel-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    background: var(--elevated); border-radius: var(--r-sm); border: 1px solid var(--line);
+    flex-shrink: 0;
+}
+.fs-sel-name { flex: 1; font-size: 12px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-cmd-row  { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+.fs-cmd-row select { width: auto; min-width: min-content; }
+.fs-cmd-box  {
+    flex-shrink: 0;
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 10px 12px; font-size: 11px; white-space: pre-wrap; word-break: break-all;
+    max-height: 140px; overflow-y: auto;
+    font-family: "JetBrains Mono", monospace; line-height: 1.55;
+}
+.fs-cmd-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Custom script form — fills bottom box, wraps naturally */
+.fs-custom-form {
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 0; width: 100%;
+}
+.fs-custom-form input,
+.fs-custom-form select { width: 100%; min-width: 0; box-sizing: border-box; }
+.fs-custom-form select { width: auto; min-width: min-content; max-width: 100%; }
+.fs-custom-form textarea {
+    width: 100%; min-width: 0; box-sizing: border-box;
+    resize: vertical; min-height: 120px;
+    font-family: "JetBrains Mono", monospace; font-size: 11.5px; line-height: 1.5;
+}
+.fs-custom-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Frida Scripts panel needs no padding — layout manages its own spacing */
+.panel[data-tab="fridascripts"] { padding: 0; gap: 0; }

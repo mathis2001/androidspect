@@ -8,6 +8,7 @@ import com.androidspect.server.routes.assetRoutes
 import com.androidspect.server.routes.decompilerRoutes
 import com.androidspect.server.routes.clipboardRoutes
 import com.androidspect.server.routes.envSetupRoutes
+import com.androidspect.server.routes.fridaScriptRoutes
 import com.androidspect.server.routes.screenshotRoutes
 import com.androidspect.server.routes.overlayRoutes
 import com.androidspect.server.routes.deeplinkRoutes
@@ -175,6 +176,7 @@ class AndroidSpectServer(
                 overlayRoutes(context)
                 screenshotRoutes(context)
                 clipboardRoutes(context)
+                fridaScriptRoutes(context)
                 envSetupRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()

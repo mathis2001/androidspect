@@ -48,6 +48,7 @@
             <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
             <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
             <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+            <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
             <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></symbol>
         </defs>
     </svg>
@@ -126,10 +127,6 @@
             </div>
 
             <nav class="sb-nav" id="tabbar" role="tablist" aria-label="Audit nav">
-                <!-- INSPECT (Files / Manifest / Components / Native) lives in
-                     the main pane as a horizontal tab strip - see #main-tabs
-                     below. It's per-app context, so it belongs ABOVE the
-                     content it modifies, not in the global sidebar. -->
                 <div class="sb-section">
                     <div class="sb-label">Live</div>
                     <a class="sb-link tab" data-tab="processes"  role="tab"><svg class="ic"><use href="#i-activity"/></svg>Processes</a>
@@ -171,6 +168,7 @@
                 <a class="main-tab tab" data-tab="deeplinks" role="tab"><svg class="ic ic-sm"><use href="#i-link"/></svg>Deeplinks</a>
                 <a class="main-tab tab" data-tab="web"       role="tab"><svg class="ic ic-sm"><use href="#i-globe"/></svg>Web</a>
                 <a class="main-tab tab" data-tab="overlay"   role="tab"><svg class="ic ic-sm"><use href="#i-layers"/></svg>Overlay</a>
+                <a class="main-tab tab" data-tab="fridascripts" role="tab"><svg class="ic ic-sm"><use href="#i-zap"/></svg>Frida Scripts</a>
                 <a class="main-tab tab" data-tab="snapshots" role="tab"><svg class="ic ic-sm"><use href="#i-camera"/></svg>Snapshots</a>
             </nav>
 
@@ -549,6 +547,73 @@
                             <div class="ov-section-h" style="margin-top:12px">Remediation</div>
                             <p class="muted small">On sensitive views, add <code>android:filterTouchesWhenObscured="true"</code> in XML or call <code>view.setFilterTouchesWhenObscured(true)</code> in code. This causes Android to drop touch events flagged with <code>FLAG_WINDOW_IS_OBSCURED</code>, making the attack ineffective regardless of the overlay.</p>
                         </div>
+                    </div>
+                </section>
+
+                <!-- FRIDA SCRIPTS -->
+                <section class="panel hidden" data-tab="fridascripts">
+                    <div class="fs-layout">
+                        <!-- Left: script browser -->
+                        <div class="fs-sidebar">
+                            <div class="fs-toolbar">
+                                <input class="input small" id="fs-search" placeholder="Search scripts…" style="flex:1">
+                                <button class="btn ghost small" id="fs-reload" title="Reload catalog">↻</button>
+                            </div>
+                            <div id="fs-catalog" class="fs-catalog">
+                                <div class="muted small" style="padding:8px">Loading catalog…</div>
+                            </div>
+                        </div>
+
+                        <!-- Right: two-row split -->
+                        <div class="fs-main">
+
+                            <!-- Top: selected scripts + command generator -->
+                            <div class="fs-top-box">
+                                <div class="fs-section-h">Selected scripts <span class="count" id="fs-sel-count">0</span></div>
+                                <div id="fs-selected" class="fs-selected-list">
+                                    <div class="empty muted small">Select scripts from the left to build a command.</div>
+                                </div>
+
+                                <div class="fs-section-h" style="margin-top:6px">Command</div>
+                                <div class="fs-cmd-row">
+                                    <select class="input small" id="fs-mode">
+                                        <option value="-f">Spawn (-f)</option>
+                                        <option value="-n">Attach by name (-n)</option>
+                                        <option value="-p">Attach by PID (-p)</option>
+                                    </select>
+                                    <input class="input mono small" id="fs-pid" placeholder="PID" style="width:100px;display:none">
+                                </div>
+                                <pre id="fs-cmd" class="fs-cmd-box muted small">frida -U …</pre>
+                                <div class="fs-cmd-actions">
+                                    <button class="btn small" id="fs-copy-cmd">Copy command</button>
+                                    <button class="btn ghost small" id="fs-clear-sel">Clear</button>
+                                </div>
+                            </div>
+
+                            <!-- Bottom: custom script editor -->
+                            <div class="fs-bottom-box">
+                                <div class="fs-section-h">Custom script</div>
+                                <div class="fs-custom-form">
+                                    <input class="input small" id="fs-custom-name" placeholder="Script name">
+                                    <select class="input small" id="fs-custom-cat">
+                                        <option>Custom</option>
+                                        <option>SSL/TLS Bypass</option>
+                                        <option>Root Detection Bypass</option>
+                                        <option>Anti-Debug / Anti-Tamper</option>
+                                        <option>Cryptography</option>
+                                        <option>Data Logging</option>
+                                        <option>OWASP MSTG</option>
+                                    </select>
+                                    <textarea id="fs-custom-content" class="input" rows="7"
+                                        placeholder="// Your Frida JS script&#10;Java.perform(function() {&#10;  // ...&#10;});"></textarea>
+                                    <div class="fs-custom-actions">
+                                        <button class="btn small" id="fs-custom-save">Save &amp; add to catalog</button>
+                                        <span class="muted small" id="fs-custom-status"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div><!-- /fs-main -->
                     </div>
                 </section>
 
