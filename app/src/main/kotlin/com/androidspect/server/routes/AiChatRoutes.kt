@@ -1,6 +1,8 @@
 package com.androidspect.server.routes
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -27,35 +29,54 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * AI Assistant — multi-provider chat with autonomous file access via tool use.
  *
- * Tools exposed to the AI (all providers via a unified agentic loop):
+ * API keys are encrypted with AES-256-GCM using a key stored in the Android Keystore.
+ * Each provider's encrypted key is stored in a separate file under filesDir/ai_keys/.
+ * Non-sensitive provider metadata (name, type, model, baseUrl) is stored in ai_providers.json.
+ *
+ * Tools exposed to the AI:
  *   list_directory(path) → directory listing
  *   read_file(path)      → file content (capped at 200 KB)
- *
- * Endpoints:
- *   GET    /api/ai/providers          → list providers (keys masked)
- *   PUT    /api/ai/providers/{id}     → save/update provider
- *   DELETE /api/ai/providers/{id}     → delete provider
- *   POST   /api/ai/chat              → chat with agentic file-access loop
- *   GET    /api/ai/files?pkg=        → file browser for manual attachment
- *   GET    /api/ai/files/content?path= → read a specific file
  */
 fun Routing.aiChatRoutes(context: Context) {
 
-    val configFile = File(context.filesDir, "ai_providers.json")
-    val json       = Json { ignoreUnknownKeys = true; prettyPrint = false }
+    val metaFile = File(context.filesDir, "ai_providers.json")
+    val keysDir  = File(context.filesDir, "ai_keys").also { it.mkdirs() }
+    val json     = Json { ignoreUnknownKeys = true; prettyPrint = false }
 
-    fun loadProviders(): List<AiProvider> = runCatching {
-        if (!configFile.exists()) return@runCatching emptyList<AiProvider>()
-        json.decodeFromString(ListSerializer(AiProvider.serializer()),
-            configFile.readText())
+    fun loadMeta(): List<AiProviderMeta> = runCatching {
+        if (!metaFile.exists()) return@runCatching emptyList<AiProviderMeta>()
+        json.decodeFromString(ListSerializer(AiProviderMeta.serializer()), metaFile.readText())
     }.getOrDefault(emptyList())
 
-    fun saveProviders(list: List<AiProvider>) = configFile.writeText(
-        json.encodeToString(ListSerializer(AiProvider.serializer()), list))
+    fun saveMeta(list: List<AiProviderMeta>) =
+        metaFile.writeText(json.encodeToString(ListSerializer(AiProviderMeta.serializer()), list))
+
+    fun saveApiKey(id: String, key: String) {
+        if (key.isBlank()) return
+        val encrypted = KeystoreCrypto.encrypt(context, key)
+        File(keysDir, "${id}.key").writeBytes(encrypted)
+    }
+
+    fun loadApiKey(id: String): String {
+        val file = File(keysDir, "${id}.key")
+        if (!file.exists()) return ""
+        return runCatching { KeystoreCrypto.decrypt(context, file.readBytes()) }.getOrDefault("")
+    }
+
+    fun deleteApiKey(id: String) { File(keysDir, "${id}.key").delete() }
+
+    fun loadProviders(): List<AiProvider> = loadMeta().map { m ->
+        AiProvider(id = m.id, name = m.name, type = m.type,
+            apiKey = loadApiKey(m.id), model = m.model, baseUrl = m.baseUrl)
+    }
 
     route("/api/ai") {
 
@@ -72,7 +93,6 @@ fun Routing.aiChatRoutes(context: Context) {
             val id  = call.parameters["id"] ?: return@put call.respond(HttpStatusCode.BadRequest)
             val req = call.receive<AiProvider>()
 
-            // Validate required fields.
             val errors = mutableListOf<String>()
             if (req.name.isBlank())  errors.add("name is required")
             if (req.model.isBlank()) errors.add("model is required")
@@ -83,17 +103,24 @@ fun Routing.aiChatRoutes(context: Context) {
             if (errors.isNotEmpty())
                 return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to errors.joinToString(", ")))
 
-            val providers = loadProviders().toMutableList()
-            val idx = providers.indexOfFirst { it.id == id }
-            val provider = req.copy(id = id)
-            if (idx >= 0) providers[idx] = provider else providers.add(provider)
-            saveProviders(providers)
+            val metas = loadMeta().toMutableList()
+            val meta  = AiProviderMeta(id = id, name = req.name, type = req.type,
+                model = req.model, baseUrl = req.baseUrl)
+            val idx = metas.indexOfFirst { it.id == id }
+            if (idx >= 0) metas[idx] = meta else metas.add(meta)
+            saveMeta(metas)
+
+            // Store the key separately in EncryptedSharedPreferences.
+            // If the client sent a blank key on edit (didn't change it), keep existing.
+            if (req.apiKey.isNotBlank()) saveApiKey(id, req.apiKey)
+
             call.respond(mapOf("ok" to "saved"))
         }
 
         delete("/providers/{id}") {
             val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            saveProviders(loadProviders().filter { it.id != id })
+            saveMeta(loadMeta().filter { it.id != id })
+            deleteApiKey(id)
             call.respond(mapOf("ok" to "deleted"))
         }
 
@@ -118,13 +145,17 @@ fun Routing.aiChatRoutes(context: Context) {
                 return@post call.respond(HttpStatusCode.BadRequest,
                     mapOf("error" to "API key is missing for provider '${provider.name}'."))
 
+            // Pass the Ktor coroutine context so the loop can check isActive.
+            // When the client disconnects (browser abort), Ktor cancels this context.
+            val handlerCtx = call.coroutineContext
             val result = withContext(Dispatchers.IO) {
-                runCatching { runAgenticLoop(provider, req, context) }
-                    .getOrElse { e -> AiChatResponse(
-                        content     = "",
-                        toolCalls   = emptyList(),
-                        error       = "${e::class.java.simpleName}: ${e.message?.take(400)}"
-                    )}
+                runCatching { runAgenticLoop(provider, req, context, handlerCtx) }
+                    .getOrElse { e ->
+                        if (e is kotlinx.coroutines.CancellationException)
+                            return@getOrElse AiChatResponse("", emptyList(), "Request cancelled by client.")
+                        AiChatResponse("", emptyList(),
+                            "${e::class.java.simpleName}: ${e.message?.take(400)}")
+                    }
             }
             call.respond(result)
         }
@@ -167,41 +198,46 @@ private const val MAX_TOOL_ROUNDS = 8
 private fun runAgenticLoop(
     provider: AiProvider,
     req: AiChatRequest,
-    context: Context
+    context: Context,
+    cancelCtx: kotlin.coroutines.CoroutineContext? = null
 ): AiChatResponse {
     val toolResults  = mutableListOf<AiToolCall>()
     val messages     = req.messages.toMutableList()
     val rounds       = (req.maxRounds ?: MAX_TOOL_ROUNDS).coerceIn(1, 32)
+    val job          = cancelCtx?.get(kotlinx.coroutines.Job)
+
+    fun checkCancelled() {
+        if (job?.isCancelled == true)
+            throw kotlinx.coroutines.CancellationException("Client disconnected")
+    }
 
     repeat(rounds) {
+        checkCancelled()
+
         val resp = dispatchToProvider(provider, req.copy(messages = messages))
 
-        // Error from provider — return immediately.
         if (resp.error != null) {
             return AiChatResponse(content = resp.content, toolCalls = toolResults, error = resp.error)
         }
 
-        // No tool call — final answer.
         if (resp.toolCall == null) {
             return AiChatResponse(content = resp.content, toolCalls = toolResults)
         }
 
-        // Execute the tool.
+        checkCancelled()
+
         val tc     = resp.toolCall
         val result = executeTool(tc.name, tc.arguments, context)
         toolResults.add(AiToolCall(name = tc.name, arguments = tc.arguments, result = result))
 
-        // Inject the tool result back into the conversation.
-        // Strategy: append a single user message with the result so the next
-        // call sees it as context. We do NOT add a fake assistant message —
-        // that was causing the loop.
         val toolMsg = "Tool ${tc.name}(path=\"${tc.arguments["path"] ?: ""}\") returned:\n" +
                       "```\n${result.take(8000)}\n```\n" +
                       "Continue your task using this information. Do not call the same tool with the same path again."
         messages.add(AiMessage("user", toolMsg))
     }
 
-    // Rounds exhausted — get final answer with accumulated context.
+    checkCancelled()
+
     val finalResp = dispatchToProvider(provider, req.copy(messages = messages))
     return AiChatResponse(
         content   = finalResp.content.ifBlank { "Maximum tool call rounds reached. Check tool results above." },
@@ -552,12 +588,65 @@ private fun buildFileTree(context: Context, pkg: String): List<AiFileEntry> =
             .toList()
     }.sortedWith(compareBy({ it.category }, { it.name }))
 
+// ── Android Keystore encryption ────────────────────────────────────────────────
+
+/**
+ * Encrypts/decrypts strings using AES-256-GCM with a key stored in the Android Keystore.
+ * No external dependency — uses only android.security.keystore and javax.crypto.
+ *
+ * Wire format: [IV_LENGTH(1 byte)][IV][ciphertext]
+ */
+private object KeystoreCrypto {
+    private const val KEY_ALIAS  = "androidspect_ai_key"
+    private const val KEYSTORE   = "AndroidKeyStore"
+    private const val ALGO       = "AES/GCM/NoPadding"
+    private const val GCM_TAG    = 128
+
+    private fun getOrCreateKey(): javax.crypto.SecretKey {
+        val ks = KeyStore.getInstance(KEYSTORE).also { it.load(null) }
+        ks.getKey(KEY_ALIAS, null)?.let { return it as javax.crypto.SecretKey }
+        val spec = KeyGenParameterSpec.Builder(KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .build()
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE).also {
+            it.init(spec)
+        }.generateKey()
+    }
+
+    fun encrypt(@Suppress("UNUSED_PARAMETER") context: Context, plaintext: String): ByteArray {
+        val cipher = Cipher.getInstance(ALGO)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        val iv         = cipher.iv
+        val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+        // Prefix: 1 byte iv-length, then iv, then ciphertext.
+        return byteArrayOf(iv.size.toByte()) + iv + ciphertext
+    }
+
+    fun decrypt(@Suppress("UNUSED_PARAMETER") context: Context, data: ByteArray): String {
+        val ivLen      = data[0].toInt() and 0xFF
+        val iv         = data.copyOfRange(1, 1 + ivLen)
+        val ciphertext = data.copyOfRange(1 + ivLen, data.size)
+        val cipher     = Cipher.getInstance(ALGO)
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG, iv))
+        return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
+    }
+}
+
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
 @Serializable data class AiProvider(
     val id: String, val name: String, val type: String,
     val apiKey: String = "", val model: String = "",
     val baseUrl: String? = null
+)
+
+// Persisted to disk — no API key field, key stored in EncryptedSharedPreferences.
+@Serializable data class AiProviderMeta(
+    val id: String, val name: String, val type: String,
+    val model: String = "", val baseUrl: String? = null
 )
 
 @Serializable data class AiMessage(val role: String, val content: String)

@@ -1815,8 +1815,11 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
 .ai-msg { display: flex; }
 .ai-msg-user      { justify-content: flex-end; }
 .ai-msg-assistant { justify-content: flex-start; }
+.ai-msg-bubble-wrap { display: flex; align-items: flex-start; gap: 6px; max-width: 82%; }
+.ai-msg-user .ai-msg-bubble-wrap { flex-direction: row-reverse; }
 .ai-msg-bubble {
-    max-width: 82%; padding: 9px 13px; border-radius: 12px;
+    flex: 1; min-width: 0;
+    padding: 9px 13px; border-radius: 12px;
     font-size: 12.5px; line-height: 1.6; word-break: break-word;
 }
 .ai-msg-user      .ai-msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
@@ -1919,3 +1922,13 @@ details > summary { cursor: pointer; user-select: none; }
 .sensitive { background: rgba(210,153,34,.1); padding: 1px 4px; border-radius: 3px; }
 
 .rc-raw { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; white-space: pre-wrap; word-break: break-all; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; max-height: 320px; overflow-y: auto; margin-top: 6px; }
+
+/* AI message copy button */
+.ai-copy-btn {
+    flex-shrink: 0; margin-top: 4px;
+    background: none; border: 1px solid var(--line); border-radius: var(--r-sm);
+    color: var(--muted); font-size: 13px; cursor: pointer;
+    padding: 2px 6px; line-height: 1; opacity: 0; transition: opacity .15s;
+}
+.ai-msg:hover .ai-copy-btn { opacity: 1; }
+.ai-copy-btn:hover { background: var(--elevated); color: var(--text); }

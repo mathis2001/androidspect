@@ -3964,6 +3964,9 @@ function initAichat() {
     once('aichat', () => {
         // Send button + Ctrl+Enter
         $('#ai-send').addEventListener('click', aiSend);
+        $('#ai-stop').addEventListener('click', () => {
+            if (aiAbortController) aiAbortController.abort();
+        });
         $('#ai-input').addEventListener('keydown', e => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiSend(); }
         });
@@ -4156,6 +4159,17 @@ function aiRenderAttachments() {
 }
 
 // ── Chat ───────────────────────────────────────────────────────────────────────
+let aiAbortController = null;
+
+function aiSetGenerating(on) {
+    const sendBtn = $('#ai-send');
+    const stopBtn = $('#ai-stop');
+    if (!sendBtn || !stopBtn) return;
+    sendBtn.disabled = on;
+    sendBtn.textContent = on ? '…' : 'Send';
+    stopBtn.classList.toggle('hidden', !on);
+}
+
 async function aiSend() {
     const text = $('#ai-input').value.trim();
     if (!text && !aiAttachments.length) return;
@@ -4177,18 +4191,18 @@ async function aiSend() {
     aiMessages.push({ role: 'user', content: userContent });
     aiAttachments = [];
     aiRenderAttachments();
-    $('#ai-input').value = '';
+    const inputEl = $('#ai-input');
+    inputEl.value = '';
+    inputEl.style.height = '';
     aiRenderMessages();
     aiScrollBottom();
 
-    // Show typing indicator.
-    const typingId = 'typing-' + Date.now();
-    aiMessages.push({ role: 'assistant', content: '…', _typing: true, _id: typingId });
+    aiMessages.push({ role: 'assistant', content: '…', _typing: true });
     aiRenderMessages();
     aiScrollBottom();
 
-    const sendBtn = $('#ai-send');
-    sendBtn.disabled = true; sendBtn.textContent = '…';
+    aiAbortController = new AbortController();
+    aiSetGenerating(true);
 
     try {
         const resp = await api.post('/api/ai/chat', {
@@ -4197,11 +4211,9 @@ async function aiSend() {
             packageName:   S.pkg || '',
             systemContext: ($('#ai-context-prompt')?.value || '').trim(),
             maxRounds:     parseInt($('#ai-max-rounds')?.value || '8') || 8
-        });
+        }, { signal: aiAbortController.signal });
 
-        // Remove typing indicator.
         aiMessages = aiMessages.filter(m => !m._typing);
-
         if (resp.error) {
             aiMessages.push({ role: 'assistant', content: `⚠ Error: ${resp.error}`, _error: true });
         } else {
@@ -4209,9 +4221,15 @@ async function aiSend() {
         }
     } catch (e) {
         aiMessages = aiMessages.filter(m => !m._typing);
-        aiMessages.push({ role: 'assistant', content: `⚠ ${e.message}`, _error: true });
+        if (e.name === 'AbortError') {
+            // User cancelled — remove the last user message too so they can re-edit.
+            aiMessages.pop();
+        } else {
+            aiMessages.push({ role: 'assistant', content: `⚠ ${e.message}`, _error: true });
+        }
     } finally {
-        sendBtn.disabled = false; sendBtn.textContent = 'Send';
+        aiAbortController = null;
+        aiSetGenerating(false);
         aiRenderMessages();
         aiScrollBottom();
     }
@@ -4219,12 +4237,11 @@ async function aiSend() {
 
 function aiRenderMessages() {
     const el = $('#ai-messages');
-    el.innerHTML = aiMessages.map(m => {
+    el.innerHTML = aiMessages.map((m, idx) => {
         const isUser   = m.role === 'user';
         const isTyping = m._typing;
         const isError  = m._error;
 
-        // Render tool calls as collapsible trace above assistant bubble.
         let toolHtml = '';
         if (m.toolCalls && m.toolCalls.length) {
             toolHtml = '<div class="ai-tool-trace">' +
@@ -4238,18 +4255,44 @@ function aiRenderMessages() {
             '</div>';
         }
 
-        let html = fmt.esc(m.content)
-            .replace(/```([\s\S]*?)```/g, '<pre class="ai-code">$1</pre>')
-            .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
-            .replace(/\n/g, '<br>');
+        let html;
+        if (isUser) {
+            // User messages: plain text only — no markdown processing.
+            html = fmt.esc(m.content).replace(/\n/g, '<br>');
+        } else {
+            html = fmt.esc(m.content)
+                .replace(/```([\s\S]*?)```/g, '<pre class="ai-code">$1</pre>')
+                .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+        }
+
+        // Copy button only on assistant messages (not user, not typing indicator).
+        const copyBtn = (!isUser && !isTyping)
+            ? `<button class="ai-copy-btn" data-idx="${idx}" title="Copy message">⎘</button>`
+            : '';
 
         return `<div class="ai-msg ai-msg-${isUser ? 'user' : 'assistant'}${isError ? ' ai-msg-error' : ''}${isTyping ? ' ai-msg-typing' : ''}">
             ${toolHtml}
-            <div class="ai-msg-bubble">${html}</div>
+            <div class="ai-msg-bubble-wrap">
+                <div class="ai-msg-bubble">${html}</div>
+                ${copyBtn}
+            </div>
         </div>`;
     }).join('');
+
+    // Wire copy buttons after render.
+    $$('.ai-copy-btn', el).forEach(btn => {
+        btn.addEventListener('click', () => {
+            const msg = aiMessages[+btn.dataset.idx];
+            if (!msg) return;
+            navigator.clipboard?.writeText(msg.content).then(
+                () => { btn.textContent = '✓'; setTimeout(() => { btn.textContent = '⎘'; }, 1500); },
+                () => toast('Copy failed', 'err')
+            );
+        });
+    });
 }
 
 function aiScrollBottom() {
