@@ -1526,16 +1526,92 @@ function refreshNet() { loadNet(); }
 // ============== LOGCAT tab ==============
 let lcSocket = null;
 let lcSearchRegex = null;
+let lcMonitorHits = [];
+let lcNotifPermission = false;
+
+// Ask for notification permission once.
+function lcRequestNotifPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') { lcNotifPermission = true; return; }
+    if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(p => { lcNotifPermission = p === 'granted'; });
+    }
+}
+
+function lcGetKeywords() {
+    const raw = $('#lc-keywords')?.value || '';
+    return raw.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+}
+
+function lcCheckMonitor(line) {
+    const keywords = lcGetKeywords();
+    if (!keywords.length) return;
+
+    // If pid-scoped is on and a PID is set, only alert on lines from that process.
+    const pidScoped = $('#lc-monitor-pid-only')?.checked;
+    const pid = parseInt($('#lc-pid')?.value, 10) || 0;
+    if (pidScoped && pid > 0) {
+        // Logcat line format: MM-DD HH:MM:SS.mmm  PID  TID L/tag: msg
+        // PID appears as second numeric token after date/time.
+        const m = line.match(/^\S+\s+\S+\s+(\d+)/);
+        const linePid = m ? parseInt(m[1], 10) : -1;
+        if (linePid !== pid) return;
+    }
+
+    const lineLow    = line.toLowerCase();
+    const wholeWord  = $('#lc-monitor-whole-word')?.checked;
+    const matched = keywords.filter(k => {
+        if (wholeWord) {
+            // Escape regex special chars in the keyword, then wrap in \b boundaries.
+            const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp(`\\b${escaped}\\b`, 'i').test(line);
+        }
+        return lineLow.includes(k);
+    });
+    if (!matched.length) return;
+
+    // Store the hit.
+    const hit = { line, keywords: matched, ts: new Date().toLocaleTimeString() };
+    lcMonitorHits.unshift(hit);
+    if (lcMonitorHits.length > 200) lcMonitorHits.pop();
+    lcRenderMonitorHits();
+
+    // Browser notification.
+    if (lcNotifPermission) {
+        new Notification(`🔔 AndroidSpect — keyword match: ${matched.join(', ')}`, {
+            body: line.slice(0, 180),
+            tag:  'lc-monitor',   // replace previous rather than stacking
+            silent: false
+        });
+    }
+}
+
+function lcRenderMonitorHits() {
+    const el = $('#lc-monitor-hits');
+    const count = lcMonitorHits.length;
+    $('#lc-monitor-count').textContent = count ? `${count} hit${count > 1 ? 's' : ''}` : '';
+    if (!count) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = lcMonitorHits.map(h =>
+        `<div class="lc-hit">` +
+        `<span class="lc-hit-ts muted small">${h.ts}</span>` +
+        h.keywords.map(k =>
+            `<span class="tg danger">${fmt.esc(k)}</span>`
+        ).join('') +
+        `<span class="lc-hit-line">${fmt.esc(h.line.slice(0, 300))}</span>` +
+        `</div>`
+    ).join('');
+}
+
 function lcStart() {
     lcStop();
+    lcRequestNotifPermission();
     const filter = $('#lc-filter').value.trim() || '*:V';
     const tail = $('#lc-tail').value || 200;
     const pid = parseInt($('#lc-pid').value, 10) || 0;
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const params = new URLSearchParams({ filter, tail });
     if (pid > 0) params.set('pid', pid);
-    // Auth is via the HttpOnly session cookie - the browser ships it on the
-    // WebSocket handshake automatically; no token query needed.
     lcSocket = new WebSocket(`${proto}//${location.host}/ws/logcat?${params}`);
     const out = $('#lc-out');
     $('#lc-status').textContent = 'connecting…';
@@ -1545,6 +1621,9 @@ function lcStart() {
     lcSocket.onmessage = e => appendLogcatLine(e.data);
 }
 function appendLogcatLine(line) {
+    // Monitor first — before any filtering so we catch everything matching pid+keywords.
+    lcCheckMonitor(line);
+
     const out = $('#lc-out');
     const sev = (line.match(/\s([VDIWEF])\s/) || [])[1] || 'V';
     const onlyMatching = $('#lc-only-matching')?.checked;
@@ -1613,6 +1692,10 @@ function initLogcat() {
         $('#lc-stop').onclick = lcStop;
         $('#lc-clear').onclick = () => { $('#lc-out').innerHTML = ''; $('#lc-search-count').textContent = ''; };
         $('#lc-save').onclick = lcSave;
+        $('#lc-monitor-clear-hits').onclick = () => {
+            lcMonitorHits = []; lcRenderMonitorHits();
+            $('#lc-monitor-count').textContent = '';
+        };
         $('#lc-search').addEventListener('input', debounce(lcApplySearch, 250));
         $('#lc-only-matching').addEventListener('change', lcApplySearch);
     });

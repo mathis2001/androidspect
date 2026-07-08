@@ -301,6 +301,15 @@
                         <label class="check"><input type="checkbox" id="lc-only-matching"> only matching</label>
                         <span class="muted small" id="lc-search-count"></span>
                     </div>
+                    <div class="toolbar" style="padding-top:0">
+                        <span class="muted small" style="white-space:nowrap">🔔 Monitor:</span>
+                        <input class="input mono grow" id="lc-keywords" placeholder="Keywords to alert on, comma-separated  e.g. password, token, Bearer, secret">
+                        <label class="check" title="Match keyword only as a whole word (not inside other words)"><input type="checkbox" id="lc-monitor-whole-word"> whole word</label>
+                        <label class="check" title="Only alert on lines matching the PID filter"><input type="checkbox" id="lc-monitor-pid-only" checked> pid-scoped</label>
+                        <button class="btn ghost small" id="lc-monitor-clear-hits">Clear hits</button>
+                        <span class="muted small" id="lc-monitor-count"></span>
+                    </div>
+                    <div id="lc-monitor-hits" class="lc-monitor-hits hidden"></div>
                     <pre id="lc-out" class="logcat grow-y"></pre>
                 </section>
 

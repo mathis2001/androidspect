@@ -1879,3 +1879,19 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
 .ai-tool-name code { font-size: 10.5px; background: var(--elevated); padding: 1px 4px; border-radius: 3px; }
 .ai-tool-result { font-family: "JetBrains Mono", monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow-y: auto; margin: 4px 0 0; background: var(--bg); padding: 6px; border-radius: 3px; }
 details > summary { cursor: pointer; user-select: none; }
+
+/* ---- Logcat monitor hits ---- */
+.lc-monitor-hits {
+    max-height: 160px; overflow-y: auto; flex-shrink: 0;
+    border-bottom: 1px solid var(--line);
+    background: rgba(244,63,94,.04);
+}
+.lc-hit {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    padding: 3px 10px; border-bottom: 1px solid rgba(244,63,94,.1);
+    font-size: 11px;
+}
+.lc-hit:last-child { border-bottom: none; }
+.lc-hit-ts   { flex-shrink: 0; }
+.lc-hit-line { font-family: 'JetBrains Mono', monospace; word-break: break-all; flex: 1; min-width: 0; }
+.tg.danger   { background: rgba(244,63,94,.15); color: var(--red, #f43f5e); border-color: rgba(244,63,94,.3); }
