@@ -31,6 +31,7 @@ Per-package static inspection and dynamic tests:
 Live runtime:
 
 * Logcat tail over WebSocket with severity colouring, regex highlight, save-to-file.
+  * Real-time keywords monitoring with browser notifications 
 * Process snapshot from `/proc` with PID, PPID, UID, RSS, state, full cmdline.
 * TCP and UDP socket table from `/proc/net` decoded to `ip:port` with the owning package.
 
@@ -190,6 +191,8 @@ Process list from `/proc`.
 Logcat live tail.
 
 ![Logcat](screenshots/08-logcat.png)
+![Logcat-Notif](screenshots/25-Logcat-Monitoring.PNG)
+![Logcat-Monitoring](screenshots/26-Logcat-Monitoring.PNG)
 
 File Explorer
 
