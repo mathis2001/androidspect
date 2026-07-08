@@ -336,7 +336,7 @@ function selectPkg(pkg) {
     S.filesRel = '';
     S.sqlitePath = null;
     // every per-app tab needs a fresh load
-    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay','fridascripts','aichat'].forEach(t => delete S.initialized[t]);
+    ['files','prefs','sqlite','manifest','components','native','code','deeplinks','snapshots','web','overlay','fridascripts','aichat','remoteconfig'].forEach(t => delete S.initialized[t]);
     renderAppList(S.appList);
     renderSelectedApp();
     if (S.tab === 'welcome' || ['processes','net','logcat','shell'].includes(S.tab)) {
@@ -4264,9 +4264,130 @@ function aiFmtSize(b) {
     return (b/1048576).toFixed(1) + 'MB';
 }
 
+// ============== REMOTE CONFIG tab ==============
+
+function initRemoteconfig() {
+    once('remoteconfig', () => {
+        $('#rc-fetch').addEventListener('click', rcFetch);
+        $('#rc-refresh').addEventListener('click', rcFetch);
+    });
+    rcFetch();
+}
+function refreshRemoteconfig() { rcFetch(); }
+
+async function rcFetch() {
+    if (!S.pkg) { $('#rc-content').innerHTML = '<div class="empty muted">Select an app first.</div>'; return; }
+    const btn = $('#rc-fetch'); btn.disabled = true;
+    $('#rc-status').textContent = 'Detecting…';
+    $('#rc-content').innerHTML = '<div class="muted small">Scanning APK and fetching…</div>';
+    try {
+        const r = await api.get(`/api/remoteconfig?pkg=${encodeURIComponent(S.pkg)}`);
+        rcRender(r);
+    } catch (e) {
+        $('#rc-content').innerHTML = `<div class="empty" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+        $('#rc-status').textContent = 'error';
+    } finally { btn.disabled = false; }
+}
+
+function rcRender(r) {
+    const el = $('#rc-content');
+
+    if (r.error && !r.firebaseDetected) {
+        $('#rc-status').textContent = 'not found';
+        el.innerHTML = `<div class="rc-section">
+            <div class="rc-badge rc-badge-none">✗ Firebase not detected</div>
+            <div class="muted small" style="margin-top:8px">${fmt.esc(r.error)}</div>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+
+    // Firebase config card.
+    if (r.firebaseDetected && r.firebaseConfig) {
+        const fc = r.firebaseConfig;
+        html += `<div class="rc-section">
+            <div class="rc-section-h">Firebase Project</div>
+            <div class="rc-badge rc-badge-ok">✓ Firebase detected <span class="muted">(${fmt.esc(fc.source)})</span></div>
+            <table class="rc-table">
+                <tr><td>Project ID</td><td><code>${fmt.esc(fc.projectId)}</code></td></tr>
+                ${fc.projectNumber ? `<tr><td>Project Number</td><td><code>${fmt.esc(fc.projectNumber)}</code></td></tr>` : ''}
+                ${fc.appId   ? `<tr><td>App ID</td><td><code>${fmt.esc(fc.appId)}</code></td></tr>` : ''}
+                ${fc.apiKey  ? `<tr><td>API Key</td><td><code class="sensitive">${fmt.esc(fc.apiKey)}</code></td></tr>` : '<tr><td>API Key</td><td><span class="muted">not found</span></td></tr>'}
+            </table>
+        </div>`;
+    }
+
+    // Remote Config detection.
+    if (r.firebaseDetected && !r.remoteConfigDetected) {
+        html += `<div class="rc-section">
+            <div class="rc-badge rc-badge-warn">⚠ Remote Config class not found in DEX</div>
+            ${r.note ? `<div class="muted small" style="margin-top:6px">${fmt.esc(r.note)}</div>` : ''}
+        </div>`;
+        $('#rc-status').textContent = 'Firebase yes · Remote Config no';
+        el.innerHTML = html; return;
+    }
+
+    // Fetch result.
+    if (r.remoteConfigDetected) {
+        const statusBadge = r.fetchStatus === 'NO_CHANGE'
+            ? `<div class="rc-badge rc-badge-warn">↻ NO_CHANGE — server returned no parameters (default/cached state)</div>`
+            : r.fetchStatus === 'UPDATE'
+            ? `<div class="rc-badge rc-badge-ok">✓ UPDATE — Remote Config values fetched</div>`
+            : r.fetchStatus === 'AUTH_ERROR' || r.fetchStatus?.startsWith('HTTP_')
+            ? `<div class="rc-badge rc-badge-err">✗ ${fmt.esc(r.fetchStatus)}</div>`
+            : `<div class="rc-badge rc-badge-warn">${fmt.esc(r.fetchStatus || 'unknown')}</div>`;
+
+        html += `<div class="rc-section">
+            <div class="rc-section-h">Remote Config <span class="rc-badge rc-badge-ok" style="margin-left:8px">✓ detected</span></div>
+            ${statusBadge}
+            ${r.fetchError ? `<div class="muted small" style="margin-top:6px;color:var(--red)">${fmt.esc(r.fetchError)}</div>` : ''}
+        </div>`;
+
+        if (r.parameters && Object.keys(r.parameters).length) {
+            const count = Object.keys(r.parameters).length;
+            html += `<div class="rc-section">
+                <div class="rc-section-h">Parameters <span class="muted">(${count})</span></div>
+                <table class="rc-table rc-params">
+                    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+                    <tbody>${Object.entries(r.parameters).map(([k, v]) =>
+                        `<tr>
+                            <td><code>${fmt.esc(k)}</code></td>
+                            <td><code class="${rcIsSensitive(k) ? 'sensitive' : ''}">${fmt.esc(v.value)}</code></td>
+                        </tr>`
+                    ).join('')}</tbody>
+                </table>
+            </div>`;
+            $('#rc-status').textContent = `${count} parameter${count > 1 ? 's' : ''} fetched`;
+        } else if (r.fetchStatus === 'NO_CHANGE') {
+            html += `<div class="rc-section muted small">The server returned NO_CHANGE — this typically means the app has no remote config values set, or the request was rate-limited. Try again in a few seconds.</div>`;
+            $('#rc-status').textContent = 'no parameters returned';
+        } else {
+            $('#rc-status').textContent = r.fetchStatus || '';
+        }
+
+        if (r.rawResponse) {
+            html += `<div class="rc-section">
+                <div class="rc-section-h" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                    Raw response ▾
+                </div>
+                <pre class="rc-raw hidden">${fmt.esc(r.rawResponse)}</pre>
+            </div>`;
+        }
+    }
+
+    el.innerHTML = html || '<div class="empty muted">No results.</div>';
+}
+
+function rcIsSensitive(key) {
+    const low = key.toLowerCase();
+    return ['key','secret','token','password','pass','api','auth','credential','cert','private']
+        .some(s => low.includes(s));
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, remoteconfig: initRemoteconfig, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, remoteconfig: refreshRemoteconfig, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
