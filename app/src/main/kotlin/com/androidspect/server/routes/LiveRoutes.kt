@@ -19,7 +19,6 @@ import kotlinx.serialization.Serializable
  * Endpoints backed by /proc reads and `am`/`pm` actions.
  *
  *   GET  /api/live/processes       - full /proc snapshot
- *   GET  /api/live/processes?pkg=… - filter by package
  *   GET  /api/live/connections     - TCP/UDP table (with UIDs)
  *   POST /api/live/exec            - run an arbitrary su shell command (DANGEROUS;
  *                                    UI gates this behind a toggle)
@@ -35,9 +34,7 @@ fun Routing.liveRoutes(context: Context) {
 
     route("/api/live") {
         get("/processes") {
-            val pkg = call.request.queryParameters["pkg"]
-            val procs = if (pkg.isNullOrBlank()) ProcessReader.listProcesses()
-            else ProcessReader.findByPackage(pkg)
+            val procs    = ProcessReader.listProcesses()
             val enriched = procs.map { p ->
                 EnrichedProc(p.pid, p.ppid, p.uid, pkgsForUid(p.uid), p.name, p.cmdline, p.state, p.threads, p.rssKb)
             }

@@ -1452,9 +1452,18 @@ function refreshNative() { if (S.pkg) loadNative(); }
 async function loadProcesses() {
     const f = $('#proc-filter').value.trim().toLowerCase();
     try {
-        const d = await api.get('/api/live/processes' + (f ? `?pkg=${encodeURIComponent(f)}` : ''));
-        const procs = d.processes || [];
-        $('#proc-count').textContent = `${procs.length} proc${procs.length === 1 ? '' : 's'}`;
+        // Always fetch all processes — filter client-side across all fields
+        // so searching by name, package, cmdline, pid or uid all work.
+        const d = await api.get('/api/live/processes');
+        const all = d.processes || [];
+        const procs = f ? all.filter(p =>
+            p.name.toLowerCase().includes(f) ||
+            String(p.pid).includes(f) ||
+            String(p.uid).includes(f) ||
+            (p.cmdline || '').toLowerCase().includes(f) ||
+            (p.packages || []).some(pkg => pkg.toLowerCase().includes(f))
+        ) : all;
+        $('#proc-count').textContent = `${procs.length} proc${procs.length === 1 ? '' : 's'}${f && procs.length !== all.length ? ` of ${all.length}` : ''}`;
         const rows = procs.map(p => `<tr data-pid="${p.pid}" data-name="${fmt.esc(p.name)}">
             <td class="num">${p.pid}</td>
             <td>${(p.packages || []).map(fmt.esc).join('<br>') || `<span class="null mono">system uid ${p.uid}</span>`}</td>
@@ -4428,9 +4437,263 @@ function rcIsSensitive(key) {
         .some(s => low.includes(s));
 }
 
+// ============== BARCODE / QR GENERATOR tab ==============
+
+const BC_TYPES = [
+    // QR / 2D
+    { id: 'qr',       label: 'QR Code',       group: '2D',      engine: 'qr',
+      fields: [{ id: 'text', label: 'Content', type: 'textarea', placeholder: 'https://example.com' }] },
+    { id: 'qr-url',   label: 'URL',            group: '2D',      engine: 'qr',
+      fields: [{ id: 'text', label: 'URL', type: 'text', placeholder: 'https://example.com' }],
+      prefix: v => v.text },
+    { id: 'qr-wifi',  label: 'WiFi',           group: '2D',      engine: 'qr',
+      fields: [
+        { id: 'ssid', label: 'SSID', type: 'text', placeholder: 'MyNetwork' },
+        { id: 'pass', label: 'Password', type: 'text', placeholder: 'password' },
+        { id: 'enc',  label: 'Encryption', type: 'select', options: ['WPA','WEP','nopass'] }
+      ],
+      prefix: v => `WIFI:T:${v.enc};S:${v.ssid};P:${v.pass};;` },
+    { id: 'qr-email', label: 'Email',          group: '2D',      engine: 'qr',
+      fields: [
+        { id: 'to',      label: 'To',      type: 'text', placeholder: 'user@example.com' },
+        { id: 'subject', label: 'Subject', type: 'text', placeholder: '' },
+        { id: 'body',    label: 'Body',    type: 'textarea', placeholder: '' }
+      ],
+      prefix: v => `mailto:${v.to}?subject=${encodeURIComponent(v.subject)}&body=${encodeURIComponent(v.body)}` },
+    { id: 'qr-sms',   label: 'SMS',            group: '2D',      engine: 'qr',
+      fields: [
+        { id: 'phone', label: 'Phone', type: 'text', placeholder: '+33612345678' },
+        { id: 'msg',   label: 'Message', type: 'textarea', placeholder: '' }
+      ],
+      prefix: v => `sms:${v.phone}?body=${encodeURIComponent(v.msg)}` },
+    { id: 'qr-vcard', label: 'vCard',          group: '2D',      engine: 'qr',
+      fields: [
+        { id: 'name',  label: 'Name',  type: 'text', placeholder: 'John Doe' },
+        { id: 'tel',   label: 'Phone', type: 'text', placeholder: '+33612345678' },
+        { id: 'email', label: 'Email', type: 'text', placeholder: 'john@example.com' },
+        { id: 'org',   label: 'Org',   type: 'text', placeholder: '' }
+      ],
+      prefix: v => `BEGIN:VCARD\nVERSION:3.0\nN:${v.name}\nTEL:${v.tel}\nEMAIL:${v.email}\nORG:${v.org}\nEND:VCARD` },
+    { id: 'qr-geo',   label: 'Geolocation',    group: '2D',      engine: 'qr',
+      fields: [
+        { id: 'lat', label: 'Latitude',  type: 'text', placeholder: '48.8566' },
+        { id: 'lon', label: 'Longitude', type: 'text', placeholder: '2.3522' }
+      ],
+      prefix: v => `geo:${v.lat},${v.lon}` },
+    // 1D
+    { id: 'code128', label: 'Code 128',        group: '1D',      engine: 'jsbarcode', format: 'CODE128',
+      fields: [{ id: 'text', label: 'Value', type: 'text', placeholder: '123456789' }] },
+    { id: 'code39',  label: 'Code 39',         group: '1D',      engine: 'jsbarcode', format: 'CODE39',
+      fields: [{ id: 'text', label: 'Value', type: 'text', placeholder: 'HELLO' }] },
+    { id: 'ean13',   label: 'EAN-13',          group: '1D',      engine: 'jsbarcode', format: 'EAN13',
+      fields: [{ id: 'text', label: '12-digit number', type: 'text', placeholder: '590123412345' }] },
+    { id: 'ean8',    label: 'EAN-8',           group: '1D',      engine: 'jsbarcode', format: 'EAN8',
+      fields: [{ id: 'text', label: '7-digit number', type: 'text', placeholder: '9638507' }] },
+    { id: 'upca',    label: 'UPC-A',           group: '1D',      engine: 'jsbarcode', format: 'UPC',
+      fields: [{ id: 'text', label: '11-digit number', type: 'text', placeholder: '01234567890' }] },
+    { id: 'itf14',   label: 'ITF-14',          group: '1D',      engine: 'jsbarcode', format: 'ITF14',
+      fields: [{ id: 'text', label: '13-digit number', type: 'text', placeholder: '1234567890123' }] },
+    { id: 'msi',     label: 'MSI Plessey',     group: '1D',      engine: 'jsbarcode', format: 'MSI',
+      fields: [{ id: 'text', label: 'Value', type: 'text', placeholder: '123456' }] },
+    { id: 'pharmacode', label: 'Pharmacode',   group: '1D',      engine: 'jsbarcode', format: 'pharmacode',
+      fields: [{ id: 'text', label: 'Number (3–131070)', type: 'text', placeholder: '1234' }] },
+];
+
+let bcCurrentType = BC_TYPES[0];
+let bcCanvas = null;
+
+function initBarcode() {
+    once('barcode', () => {
+        bcLoadLibs();
+        bcRenderTypeGrid();
+        bcSelectType(BC_TYPES[0]);
+        $('#bc-generate').addEventListener('click', bcGenerate);
+        $('#bc-download').addEventListener('click', bcDownload);
+        $('#bc-copy-img').addEventListener('click', bcCopyImg);
+    });
+}
+function refreshBarcode() {}
+
+function bcLoadLibs() {
+    if (window.JsBarcode) return;
+    const s1 = document.createElement('script');
+    s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js';
+    document.head.appendChild(s1);
+    if (window.qrcode) return;
+    const s2 = document.createElement('script');
+    s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+    document.head.appendChild(s2);
+}
+
+function bcRenderTypeGrid() {
+    const grid = $('#bc-type-grid');
+    const groups = {};
+    BC_TYPES.forEach(t => (groups[t.group] = groups[t.group] || []).push(t));
+    grid.innerHTML = Object.entries(groups).map(([g, types]) =>
+        `<div class="bc-group-label muted small">${g}</div>` +
+        types.map(t =>
+            `<button class="btn ghost small bc-type-btn${t.id === bcCurrentType.id ? ' active' : ''}" data-id="${t.id}">${t.label}</button>`
+        ).join('')
+    ).join('');
+    $$('.bc-type-btn', grid).forEach(b => b.addEventListener('click', () => {
+        bcSelectType(BC_TYPES.find(t => t.id === b.dataset.id));
+    }));
+}
+
+function bcSelectType(type) {
+    bcCurrentType = type;
+    $$('.bc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.id === type.id));
+    const fields = $('#bc-fields');
+    fields.innerHTML = type.fields.map(f => {
+        if (f.type === 'textarea')
+            return `<label class="bc-label muted small">${f.label}</label>
+                    <textarea class="input small mono bc-field" id="bcf-${f.id}" rows="3" placeholder="${fmt.esc(f.placeholder || '')}" spellcheck="false"></textarea>`;
+        if (f.type === 'select')
+            return `<label class="bc-label muted small">${f.label}</label>
+                    <select class="input small bc-field" id="bcf-${f.id}">
+                        ${f.options.map(o => `<option>${o}</option>`).join('')}
+                    </select>`;
+        return `<label class="bc-label muted small">${f.label}</label>
+                <input class="input small mono bc-field" id="bcf-${f.id}" type="text"
+                       placeholder="${fmt.esc(f.placeholder || '')}" spellcheck="false">`;
+    }).join('');
+    // Pre-fill URL field with current package's deeplink authority if available.
+    if (type.id === 'qr-url' && S.pkg) {
+        const el = $('#bcf-text');
+        if (el && !el.value) el.value = `https://`;
+    }
+    $('#bc-output').innerHTML = '<div class="empty muted small">Fill the fields and click Generate.</div>';
+    $('#bc-preview-actions').classList.add('hidden');
+    const meta = $('#bc-preview-meta');
+    if (meta) { meta.textContent = ''; meta.classList.add('hidden'); }
+    bcCanvas = null;
+}
+
+async function bcGenerate() {
+    const type = bcCurrentType;
+    const btn  = $('#bc-generate'); btn.disabled = true; btn.textContent = 'Generating…';
+    const out  = $('#bc-output');
+    const actions = $('#bc-preview-actions');
+    bcCanvas = null;
+    actions.classList.add('hidden');
+    out.innerHTML = '';
+
+    try {
+        // Collect and validate field values.
+        const vals = {};
+        let missing = null;
+        for (const f of type.fields) {
+            const el = $(`#bcf-${f.id}`);
+            vals[f.id] = el ? el.value.trim() : '';
+            if (!vals[f.id] && f.required !== false && !['pass','subject','body','org','msg'].includes(f.id)) {
+                if (!missing) missing = f.label;
+            }
+        }
+        if (missing) {
+            bcShowError(`"${missing}" is required.`);
+            return;
+        }
+
+        const content = type.prefix ? type.prefix(vals) : (vals.text || '');
+        if (!content) { bcShowError('Content is empty.'); return; }
+
+        if (type.engine === 'qr') {
+            await bcEnsureLib('qrcode');
+            const canvas = document.createElement('canvas');
+            out.appendChild(canvas);
+            // qrcode-generator: draw modules directly onto our canvas, no extra DOM.
+            const qr = window.qrcode(0, 'H');
+            qr.addData(content);
+            qr.make();
+            const count  = qr.getModuleCount();
+            const size   = 280;
+            const cell   = size / count;
+            canvas.width  = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#000000';
+            for (let r = 0; r < count; r++) {
+                for (let c = 0; c < count; c++) {
+                    if (qr.isDark(r, c)) {
+                        ctx.fillRect(Math.floor(c * cell), Math.floor(r * cell),
+                                     Math.ceil(cell), Math.ceil(cell));
+                    }
+                }
+            }
+            bcCanvas = canvas;
+
+        } else {
+            await bcEnsureLib('JsBarcode');
+            const canvas = document.createElement('canvas');
+            out.appendChild(canvas);
+            try {
+                window.JsBarcode(canvas, content, {
+                    format: type.format, width: 2, height: 80,
+                    displayValue: true, fontSize: 13, margin: 10,
+                    background: '#ffffff', lineColor: '#000000'
+                });
+            } catch (jsbErr) {
+                out.innerHTML = '';
+                bcShowError(jsbErr.message || 'Invalid value for this barcode format.');
+                return;
+            }
+            bcCanvas = canvas;
+        }
+
+        actions.classList.remove('hidden');
+        // Show the encoded content below the preview.
+        const meta = $('#bc-preview-meta');
+        if (meta) {
+            meta.textContent = content.length > 120 ? content.slice(0, 120) + '…' : content;
+            meta.classList.remove('hidden');
+        }
+
+    } catch (e) {
+        bcShowError(e.message || 'Unknown error.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Generate';
+    }
+}
+
+function bcShowError(msg) {
+    const out = $('#bc-output');
+    out.innerHTML = `<div class="bc-error"><svg style="width:32px;height:32px;opacity:.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${fmt.esc(msg)}</span></div>`;
+    toast(msg, 'err');
+}
+
+function bcEnsureLib(name) {
+    if (window[name]) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const check = setInterval(() => {
+            if (window[name]) { clearInterval(check); resolve(); }
+        }, 80);
+        setTimeout(() => { clearInterval(check); reject(new Error(`${name} failed to load`)); }, 8000);
+    });
+}
+
+function bcDownload() {
+    if (!bcCanvas) return;
+    const a = document.createElement('a');
+    a.href = bcCanvas.toDataURL('image/png');
+    a.download = `${bcCurrentType.id}_${Date.now()}.png`;
+    a.click();
+}
+
+async function bcCopyImg() {
+    if (!bcCanvas) return;
+    try {
+        bcCanvas.toBlob(async blob => {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            toast('Image copied', 'ok');
+        }, 'image/png');
+    } catch (e) { toast('Copy failed: ' + e.message, 'err'); }
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, remoteconfig: initRemoteconfig, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, remoteconfig: refreshRemoteconfig, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, remoteconfig: initRemoteconfig, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard, barcode: initBarcode };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, remoteconfig: refreshRemoteconfig, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard, barcode: refreshBarcode };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 
