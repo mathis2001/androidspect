@@ -874,6 +874,7 @@ async function loadManifest() {
     if (!S.pkg) return;
     try {
         const d = await api.get(`/api/apps/${encodeURIComponent(S.pkg)}/manifest`);
+        S.manifestData = d;
         $('#manifest-summary').innerHTML = `
             <div class="kv"><div class="k">package</div><div class="v mono">${fmt.esc(d.packageName)}</div></div>
             <div class="kv"><div class="k">version</div><div class="v">${fmt.esc(d.versionName)} (${d.versionCode})</div></div>
@@ -881,11 +882,70 @@ async function loadManifest() {
             <div class="kv"><div class="k">target sdk</div><div class="v">${d.targetSdk}</div></div>
             <div class="kv"><div class="k">permissions</div><div class="v">${d.permissions.length}</div></div>
         `;
+        $('#manifest-perm-count').textContent = d.permissions.length
+            ? `${d.permissions.length} permission${d.permissions.length > 1 ? 's' : ''}`
+            : '';
         $('#manifest-xml').textContent = d.xml || '(failed to decode)';
+        // Re-render perm list if currently open.
+        if ($('#manifest-perm-toggle').getAttribute('aria-pressed') === 'true') {
+            manifestRenderPerms(d.permissions);
+        }
     } catch (e) { toast(e.message, 'err'); }
 }
+
+function manifestRenderPerms(perms) {
+    const el = $('#manifest-perm-list');
+    if (!perms || !perms.length) {
+        el.innerHTML = '<div class="empty muted small">No permissions declared.</div>';
+        return;
+    }
+    // Classify by protection level using well-known dangerous permissions.
+    const DANGEROUS = new Set([
+        'android.permission.READ_CONTACTS','android.permission.WRITE_CONTACTS',
+        'android.permission.READ_CALL_LOG','android.permission.WRITE_CALL_LOG',
+        'android.permission.CAMERA','android.permission.RECORD_AUDIO',
+        'android.permission.ACCESS_FINE_LOCATION','android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_BACKGROUND_LOCATION',
+        'android.permission.READ_EXTERNAL_STORAGE','android.permission.WRITE_EXTERNAL_STORAGE',
+        'android.permission.READ_SMS','android.permission.SEND_SMS','android.permission.RECEIVE_SMS',
+        'android.permission.READ_PHONE_STATE','android.permission.CALL_PHONE',
+        'android.permission.PROCESS_OUTGOING_CALLS',
+        'android.permission.BODY_SENSORS','android.permission.ACTIVITY_RECOGNITION',
+        'android.permission.BLUETOOTH_SCAN','android.permission.BLUETOOTH_CONNECT',
+        'android.permission.UWB_RANGING','android.permission.NEARBY_WIFI_DEVICES',
+        'android.permission.READ_MEDIA_IMAGES','android.permission.READ_MEDIA_VIDEO',
+        'android.permission.READ_MEDIA_AUDIO',
+    ]);
+    const sorted = [...perms].sort((a, b) => {
+        const ad = DANGEROUS.has(a) ? 0 : 1;
+        const bd = DANGEROUS.has(b) ? 0 : 1;
+        return ad - bd || a.localeCompare(b);
+    });
+    el.innerHTML = sorted.map(p => {
+        const isDangerous = DANGEROUS.has(p);
+        const short = p.startsWith('android.permission.') ? p.slice(19) : p;
+        return `<div class="manifest-perm-row${isDangerous ? ' dangerous' : ''}">
+            ${isDangerous ? '<span class="manifest-perm-badge danger">DANGEROUS</span>' : '<span class="manifest-perm-badge">NORMAL</span>'}
+            <span class="manifest-perm-name mono small" title="${fmt.esc(p)}">${fmt.esc(short)}</span>
+        </div>`;
+    }).join('');
+}
+
 function initManifest() {
-    once('manifest', () => { $('#manifest-refresh').onclick = loadManifest; });
+    once('manifest', () => {
+        $('#manifest-refresh').onclick = loadManifest;
+        $('#manifest-perm-toggle').addEventListener('click', () => {
+            const btn     = $('#manifest-perm-toggle');
+            const list    = $('#manifest-perm-list');
+            const xml     = $('#manifest-xml');
+            const pressed = btn.getAttribute('aria-pressed') === 'true';
+            btn.setAttribute('aria-pressed', String(!pressed));
+            btn.classList.toggle('active', !pressed);
+            list.classList.toggle('hidden', pressed);
+            xml.classList.toggle('hidden', !pressed);
+            if (!pressed && S.manifestData) manifestRenderPerms(S.manifestData.permissions);
+        });
+    });
     loadManifest();
 }
 function refreshManifest() { if (S.pkg) loadManifest(); }

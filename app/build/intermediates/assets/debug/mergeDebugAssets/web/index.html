@@ -239,8 +239,11 @@
                 <section class="panel hidden" data-tab="manifest">
                     <div class="toolbar">
                         <button class="btn ghost small" id="manifest-refresh">↻ Decode</button>
+                        <button class="btn ghost small" id="manifest-perm-toggle" aria-pressed="false">🔐 Permissions</button>
+                        <span class="muted small" id="manifest-perm-count"></span>
                     </div>
                     <div id="manifest-summary" class="kv-strip"></div>
+                    <div id="manifest-perm-list" class="manifest-perm-list hidden"></div>
                     <pre id="manifest-xml" class="code-block grow-y"></pre>
                 </section>
 

@@ -2023,3 +2023,28 @@ details > summary { cursor: pointer; user-select: none; }
 .ai-budget-bar.warn   { background: #d9a200; }
 .ai-budget-bar.danger { background: var(--red, #f43f5e); }
 .ai-budget-labels { display: flex; justify-content: space-between; }
+
+/* Manifest — permissions panel */
+.manifest-perm-list {
+    overflow-y: auto; max-height: 100%;
+    flex: 1; padding: 6px 2px;
+    display: flex; flex-direction: column; gap: 3px;
+}
+.manifest-perm-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px; border-radius: var(--r-sm);
+    border: 1px solid var(--line); background: var(--elevated);
+}
+.manifest-perm-row.dangerous {
+    background: rgba(244,63,94,.06); border-color: rgba(244,63,94,.25);
+}
+.manifest-perm-badge {
+    font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+    background: var(--bg-2); color: var(--muted); border: 1px solid var(--line);
+}
+.manifest-perm-badge.danger {
+    background: rgba(244,63,94,.15); color: var(--red, #f43f5e);
+    border-color: rgba(244,63,94,.3);
+}
+.manifest-perm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
