@@ -7,6 +7,7 @@ import com.androidspect.server.routes.appRoutes
 import com.androidspect.server.routes.assetRoutes
 import com.androidspect.server.routes.decompilerRoutes
 import com.androidspect.server.routes.aiChatRoutes
+import com.androidspect.server.routes.appContextCacheRoutes
 import com.androidspect.server.routes.clipboardRoutes
 import com.androidspect.server.routes.remoteConfigRoutes
 import com.androidspect.server.routes.envSetupRoutes
@@ -179,6 +180,7 @@ class AndroidSpectServer(
                 screenshotRoutes(context)
                 clipboardRoutes(context)
                 aiChatRoutes(context)
+                appContextCacheRoutes(context)
                 remoteConfigRoutes(context)
                 fridaScriptRoutes(context)
                 envSetupRoutes(context)

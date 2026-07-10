@@ -3846,6 +3846,7 @@ function fsRenderCatalog(catalog) {
                         '<div class="fs-tags">' + s.tags.map(t => '<span class="tg">' + fmt.esc(t) + '</span>').join('') + '</div>' +
                     '</div>' +
                     '<div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">' +
+                        (isCustom ? '<button class="btn ghost small fs-dl-btn" data-id="' + fmt.esc(s.id) + '" title="Download script"><svg class="ic ic-sm"><use href="#i-download"/></svg></button>' : '') +
                         (isCustom ? '<button class="btn ghost small danger fs-del-btn" data-id="' + fmt.esc(s.id) + '" title="Delete custom script">🗑</button>' : '') +
                         '<button class="btn small fs-add-btn' + (sel ? ' fs-added' : '') + '" data-id="' + fmt.esc(s.id) + '">' +
                             (sel ? '&#10003; Added' : '+ Add') +
@@ -3869,6 +3870,21 @@ function fsRenderCatalog(catalog) {
             fsRenderCatalog(catalog);
             fsRenderSelected();
             fsUpdateCommand();
+        });
+    });
+
+    $$('.fs-dl-btn', cat).forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            try {
+                const d = await api.get('/api/frida-scripts/custom/' + encodeURIComponent(id));
+                const blob = new Blob([d.content], { type: 'text/javascript' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = id + '.js';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) { toast(e.message, 'err'); }
         });
     });
 
@@ -3980,6 +3996,7 @@ function initAichat() {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiSend(); }
         });
         // Provider management
+        $('#ai-ctx-build').addEventListener('click', aiCtxBuild);
         $('#ai-provider-manage').addEventListener('click', () => {
             aiRenderProviderList();
             $('#ai-provider-modal').classList.remove('hidden');
@@ -4001,6 +4018,7 @@ function initAichat() {
     });
     aiLoadProviders();
     aiLoadFiles();
+    aiCtxCheckStatus();
     // Reset conversation when package changes.
     aiMessages = []; aiAttachments = [];
     aiRenderAttachments();
@@ -4023,7 +4041,49 @@ function aiAddSystemWelcome() {
     aiRenderMessages();
 }
 
-// ── Provider management ────────────────────────────────────────────────────────
+// ── App context cache ──────────────────────────────────────────────────────────
+
+async function aiCtxCheckStatus() {
+    if (!S.pkg) return;
+    const st = $('#ai-ctx-status');
+    if (!st) return;
+    try {
+        const r = await api.get(`/api/ai/context/status?pkg=${encodeURIComponent(S.pkg)}`);
+        if (r.exists === 'true') {
+            const age  = Math.round((Date.now() - +r.updatedAt) / 60000);
+            const size = (+r.sizeBytes / 1024).toFixed(0);
+            st.textContent = `✓ Built ${age < 60 ? age + 'm ago' : Math.round(age/60) + 'h ago'} · ${size} KB`;
+            st.style.color = '';
+        } else {
+            st.textContent = 'Not built — click ⚡ to analyse the app';
+            st.style.color = 'var(--muted)';
+        }
+    } catch (_) {}
+}
+
+async function aiCtxBuild() {
+    if (!S.pkg) { toast('Select an app first', 'err'); return; }
+    const btn = $('#ai-ctx-build');
+    const st  = $('#ai-ctx-status');
+    btn.disabled = true; btn.textContent = '⏳ Building…';
+    if (st) st.textContent = 'Scanning app…';
+    try {
+        const r = await api.post(`/api/ai/context/build?pkg=${encodeURIComponent(S.pkg)}`);
+        const size = (r.sizeBytes / 1024).toFixed(0);
+        if (st) {
+            st.textContent = `✓ Built now · ${size} KB${r.errors?.length ? ` (${r.errors.length} warnings)` : ''}`;
+            st.style.color = '';
+        }
+        toast(`Context built — ${size} KB`, 'ok');
+        // Reload file list so the AI sidebar shows the new file.
+        aiLoadFiles();
+    } catch (e) {
+        if (st) { st.textContent = '✗ ' + e.message; st.style.color = 'var(--red)'; }
+        toast(e.message, 'err');
+    } finally {
+        btn.disabled = false; btn.textContent = '⚡ Build context';
+    }
+}
 async function aiLoadProviders() {
     try {
         aiProviders = await api.get('/api/ai/providers');

@@ -516,6 +516,7 @@ private fun allowedRoots(context: Context) = listOf(
     File(context.filesDir,  "captures"),
     File(context.filesDir,  "frida_custom_scripts"),
     File(context.filesDir,  "frida_script_cache"),
+    File(context.filesDir,  "ai_context"),
 )
 
 private fun isAllowed(path: String, context: Context): Boolean {
@@ -564,10 +565,11 @@ private fun buildSystemPrompt(req: AiChatRequest) = buildString {
     appendLine("5. Maximum tool calls per response: 8. Be efficient.")
     appendLine()
     appendLine("## Root paths")
-    appendLine("  /data/data/com.androidspect/cache/decompiler/    — decompiled Smali/Java (jobId subdirs)")
-    appendLine("  /data/data/com.androidspect/files/snapshots/     — app snapshots (JSON)")
-    appendLine("  /data/data/com.androidspect/files/notes/         — pentest notes")
-    appendLine("  /data/data/com.androidspect/files/captures/      — screen captures")
+    appendLine("  /data/data/com.androidspect/files/ai_context/      — pre-built app context (START HERE: read <pkg>.json for full app analysis)")
+    appendLine("  /data/data/com.androidspect/cache/decompiler/      — decompiled Smali/Java (jobId subdirs)")
+    appendLine("  /data/data/com.androidspect/files/snapshots/       — app snapshots (JSON)")
+    appendLine("  /data/data/com.androidspect/files/notes/           — pentest notes")
+    appendLine("  /data/data/com.androidspect/files/captures/        — screen captures")
     appendLine()
     appendLine("## Decompiler directory structure")
     appendLine("  cache/decompiler/<pkg>/<jobId>/classes/com/example/SomeClass.smali")
