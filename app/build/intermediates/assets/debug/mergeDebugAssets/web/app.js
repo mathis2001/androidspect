@@ -4051,6 +4051,7 @@ function initAichat() {
             aiRenderAttachments();
             aiAddSystemWelcome();
             aiScrollBottom();
+            aiResetTokenCounter();
         });
     });
     aiLoadProviders();
@@ -4059,6 +4060,7 @@ function initAichat() {
     // Load persisted session for this package, or start fresh.
     aiMessages = []; aiAttachments = [];
     aiRenderAttachments();
+    aiResetTokenCounter();
     aiSessionLoad(S.pkg || '').then(msgs => {
         if (msgs.length) {
             aiMessages = msgs;
@@ -4086,7 +4088,89 @@ function aiAddSystemWelcome() {
     aiRenderMessages();
 }
 
-// ── App context cache ──────────────────────────────────────────────────────────
+// ── Token / cost counter ───────────────────────────────────────────────────────
+
+// Pricing in USD per million tokens [input, output].
+// Sources: official pricing pages as of mid-2025.
+const AI_PRICING = {
+    // Anthropic
+    'claude-opus-4-6':   [15.00, 75.00],
+    'claude-opus-4-7':   [15.00, 75.00],
+    'claude-opus-4-8':   [15.00, 75.00],
+    'claude-sonnet-4-6': [3.00,  15.00],
+    'claude-haiku-4-5':  [0.80,   4.00],
+    // OpenAI
+    'gpt-4o':            [2.50,  10.00],
+    'gpt-4o-mini':       [0.15,   0.60],
+    'gpt-4-turbo':       [10.00, 30.00],
+    'o1':                [15.00, 60.00],
+    'o1-mini':           [3.00,  12.00],
+    'o3-mini':           [1.10,   4.40],
+    // Gemini
+    'gemini-1.5-flash':  [0.075,  0.30],
+    'gemini-1.5-pro':    [1.25,   5.00],
+    'gemini-2.0-flash':  [0.10,   0.40],
+    'gemini-2.5-pro':    [1.25,  10.00],
+};
+
+let aiSessionTokens = { input: 0, output: 0 };  // cumulative for this session
+
+function aiUpdateTokenCounter(usage) {
+    if (!usage) return;
+    aiSessionTokens.input  += usage.inputTokens  || 0;
+    aiSessionTokens.output += usage.outputTokens || 0;
+
+    const provider = aiProviders.find(p => p.id === aiSelectedProv);
+    const model    = provider?.model?.toLowerCase() || '';
+    const pricing  = AI_PRICING[model] || null;
+    const inputM   = aiSessionTokens.input  / 1_000_000;
+    const outputM  = aiSessionTokens.output / 1_000_000;
+    const costUSD  = pricing ? (inputM * pricing[0] + outputM * pricing[1]) : null;
+
+    const total = aiSessionTokens.input + aiSessionTokens.output;
+    let label   = `${aiFmtTokens(total)} tokens`;
+    if (pricing) label += ` · ~$${costUSD.toFixed(4)}`;
+
+    const counter = $('#ai-token-counter');
+    if (counter) {
+        counter.textContent = label;
+        counter.title = `Input: ${aiFmtTokens(aiSessionTokens.input)} · Output: ${aiFmtTokens(aiSessionTokens.output)}`;
+    }
+
+    // Budget footer.
+    const budget    = provider?.budgetUsd;
+    const footer    = $('#ai-budget-footer');
+    const bar       = $('#ai-budget-bar');
+    const spentEl   = $('#ai-budget-spent');
+    const leftEl    = $('#ai-budget-left');
+    if (footer && budget && budget > 0 && costUSD !== null) {
+        const pct  = Math.min(costUSD / budget * 100, 100);
+        const left = Math.max(budget - costUSD, 0);
+        footer.style.display = '';
+        bar.style.width = pct + '%';
+        bar.className = 'ai-budget-bar' + (pct >= 90 ? ' danger' : pct >= 70 ? ' warn' : '');
+        spentEl.textContent = `$${costUSD.toFixed(4)} spent`;
+        leftEl.textContent  = `$${left.toFixed(4)} left`;
+        if (pct >= 90 && pct < 100) toast(`⚠ Budget ${pct.toFixed(0)}% used`, 'err');
+        if (pct >= 100)             toast('🛑 Budget exceeded!', 'err');
+    } else if (footer) {
+        footer.style.display = 'none';
+    }
+}
+
+function aiFmtTokens(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+    return String(n);
+}
+
+function aiResetTokenCounter() {
+    aiSessionTokens = { input: 0, output: 0 };
+    const el = $('#ai-token-counter');
+    if (el) el.textContent = 'Tokens: —';
+    const footer = $('#ai-budget-footer');
+    if (footer) footer.style.display = 'none';
+}
 
 async function aiCtxCheckStatus() {
     if (!S.pkg) return;
@@ -4160,9 +4244,11 @@ function aiEditProvider(id) {
     $('#ai-prov-id').value    = p.id;
     $('#ai-prov-name').value  = p.name;
     $('#ai-prov-type').value  = p.type;
-    $('#ai-prov-key').value   = '';   // don't prefill masked key
-    $('#ai-prov-model').value = p.model || '';
-    $('#ai-prov-url').value   = p.baseUrl || '';
+    $('#ai-prov-key').value   = '';
+    $('#ai-prov-key').placeholder = 'Leave blank to keep existing key';
+    $('#ai-prov-model').value  = p.model || '';
+    $('#ai-prov-budget').value = p.budgetUsd != null ? p.budgetUsd : '';
+    $('#ai-prov-url').value    = p.baseUrl || '';
     $('#ai-prov-url').style.display = p.type === 'custom' ? '' : 'none';
 }
 
@@ -4182,19 +4268,21 @@ async function aiSaveProvider() {
     const model = $('#ai-prov-model').value.trim();
     const url   = $('#ai-prov-url').value.trim();
     const existingId = $('#ai-prov-id').value.trim();
+    const isEdit     = existingId !== '';
 
     // Client-side validation.
     if (!name)  { toast('Display name is required', 'err'); $('#ai-prov-name').focus();  return; }
     if (!model) { toast('Model is required (e.g. claude-opus-4-6)', 'err'); $('#ai-prov-model').focus(); return; }
-    if (type !== 'custom' && !key)  { toast('API key is required', 'err'); $('#ai-prov-key').focus(); return; }
+    if (type !== 'custom' && !key && !isEdit) { toast('API key is required', 'err'); $('#ai-prov-key').focus(); return; }
     if (type === 'custom' && !url)  { toast('Base URL is required for custom providers', 'err'); $('#ai-prov-url').focus(); return; }
 
+    const budget = parseFloat($('#ai-prov-budget')?.value) || null;
     const id = existingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32);
     try {
         const resp = await fetchAuthed(`/api/ai/providers/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, name, type, apiKey: key, model, baseUrl: url || null })
+            body: JSON.stringify({ id, name, type, apiKey: key, model, baseUrl: url || null, budgetUsd: budget })
         });
         const d = await resp.json();
         if (!resp.ok) { toast(d.error || 'Save failed', 'err'); return; }
@@ -4206,7 +4294,8 @@ async function aiSaveProvider() {
 }
 
 function aiClearProviderForm() {
-    ['ai-prov-id','ai-prov-name','ai-prov-key','ai-prov-model','ai-prov-url'].forEach(id => $('#' + id).value = '');
+    ['ai-prov-id','ai-prov-name','ai-prov-key','ai-prov-model','ai-prov-url','ai-prov-budget'].forEach(id => $('#' + id).value = '');
+    $('#ai-prov-key').placeholder = 'API Key (leave blank for local)';
     $('#ai-prov-id').value = '';
     $('#ai-prov-type').value = 'anthropic';
     $('#ai-prov-url').style.display = 'none';
@@ -4332,6 +4421,7 @@ async function aiSend() {
             aiMessages.push({ role: 'assistant', content: `⚠ Error: ${resp.error}`, _error: true });
         } else {
             aiMessages.push({ role: 'assistant', content: resp.content, toolCalls: resp.toolCalls || [] });
+            aiUpdateTokenCounter(resp.usage);
         }
     } catch (e) {
         aiMessages = aiMessages.filter(m => !m._typing);

@@ -695,10 +695,22 @@
                                 <input class="input small" id="ai-files-search" placeholder="Filter files…" style="margin-bottom:4px">
                                 <div id="ai-files-list" class="ai-files-list"></div>
                             </div>
+                            <div class="ai-budget-footer" id="ai-budget-footer" style="display:none">
+                                <div class="ai-budget-bar-wrap">
+                                    <div class="ai-budget-bar" id="ai-budget-bar"></div>
+                                </div>
+                                <div class="ai-budget-labels">
+                                    <span class="muted small" id="ai-budget-spent"></span>
+                                    <span class="muted small" id="ai-budget-left"></span>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Right: chat -->
                         <div class="ai-chat-area">
+                            <div class="ai-chat-topbar">
+                                <span class="muted small" id="ai-token-counter" title="Cumulative token usage and estimated cost for this session">Tokens: —</span>
+                            </div>
                             <div id="ai-messages" class="ai-messages"></div>
                             <div class="ai-input-row">
                                 <div id="ai-attachments" class="ai-attachments hidden"></div>
@@ -729,6 +741,7 @@
                                 </select>
                                 <input class="input mono small" id="ai-prov-key"   placeholder="API Key (leave blank for local)">
                                 <input class="input mono small" id="ai-prov-model" placeholder="Model (e.g. claude-opus-4-6, gpt-4o, gemini-1.5-flash, llama3)">
+                                <input class="input mono small" id="ai-prov-budget" type="number" min="0" step="0.01" placeholder="Budget in USD (optional, e.g. 5.00)">
                                 <input class="input mono small" id="ai-prov-url"   placeholder="Base URL (custom only, e.g. http://localhost:11434/v1/chat/completions)" style="display:none">
                                 <div class="ai-provider-form-actions">
                                     <button class="btn small" id="ai-prov-save">Save provider</button>

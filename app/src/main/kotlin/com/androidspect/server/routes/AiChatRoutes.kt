@@ -77,7 +77,8 @@ fun Routing.aiChatRoutes(context: Context) {
 
     fun loadProviders(): List<AiProvider> = loadMeta().map { m ->
         AiProvider(id = m.id, name = m.name, type = m.type,
-            apiKey = loadApiKey(m.id), model = m.model, baseUrl = m.baseUrl)
+            apiKey = loadApiKey(m.id), model = m.model,
+            baseUrl = m.baseUrl, budgetUsd = m.budgetUsd)
     }
 
     route("/api/ai") {
@@ -95,10 +96,13 @@ fun Routing.aiChatRoutes(context: Context) {
             val id  = call.parameters["id"] ?: return@put call.respond(HttpStatusCode.BadRequest)
             val req = call.receive<AiProvider>()
 
+            val isEdit      = loadMeta().any { it.id == id }
+            val hasExistingKey = isEdit && loadApiKey(id).isNotBlank()
+
             val errors = mutableListOf<String>()
             if (req.name.isBlank())  errors.add("name is required")
             if (req.model.isBlank()) errors.add("model is required")
-            if (req.type != "custom" && req.apiKey.isBlank())
+            if (req.type != "custom" && req.apiKey.isBlank() && !hasExistingKey)
                 errors.add("API key is required for ${req.type}")
             if (req.type == "custom" && req.baseUrl.isNullOrBlank())
                 errors.add("base URL is required for custom providers")
@@ -107,13 +111,13 @@ fun Routing.aiChatRoutes(context: Context) {
 
             val metas = loadMeta().toMutableList()
             val meta  = AiProviderMeta(id = id, name = req.name, type = req.type,
-                model = req.model, baseUrl = req.baseUrl)
+                model = req.model, baseUrl = req.baseUrl, budgetUsd = req.budgetUsd)
             val idx = metas.indexOfFirst { it.id == id }
             if (idx >= 0) metas[idx] = meta else metas.add(meta)
             saveMeta(metas)
 
-            // Store the key separately in EncryptedSharedPreferences.
-            // If the client sent a blank key on edit (didn't change it), keep existing.
+            // Only overwrite the key if a new one was provided.
+            // Blank on edit = keep the existing encrypted key.
             if (req.apiKey.isNotBlank()) saveApiKey(id, req.apiKey)
 
             call.respond(mapOf("ok" to "saved"))
@@ -232,6 +236,8 @@ private fun runAgenticLoop(
     val messages     = req.messages.toMutableList()
     val rounds       = (req.maxRounds ?: MAX_TOOL_ROUNDS).coerceIn(1, 32)
     val job          = cancelCtx?.get(kotlinx.coroutines.Job)
+    var totalInputTokens  = 0
+    var totalOutputTokens = 0
 
     fun checkCancelled() {
         if (job?.isCancelled == true)
@@ -244,11 +250,16 @@ private fun runAgenticLoop(
         val resp = dispatchToProvider(provider, req.copy(messages = messages))
 
         if (resp.error != null) {
-            return AiChatResponse(content = resp.content, toolCalls = toolResults, error = resp.error)
+            return AiChatResponse(content = resp.content, toolCalls = toolResults,
+                error = resp.error,
+                usage = AiUsage(totalInputTokens, totalOutputTokens))
         }
 
+        resp.usage?.let { totalInputTokens += it.inputTokens; totalOutputTokens += it.outputTokens }
+
         if (resp.toolCall == null) {
-            return AiChatResponse(content = resp.content, toolCalls = toolResults)
+            return AiChatResponse(content = resp.content, toolCalls = toolResults,
+                usage = AiUsage(totalInputTokens, totalOutputTokens))
         }
 
         checkCancelled()
@@ -266,10 +277,12 @@ private fun runAgenticLoop(
     checkCancelled()
 
     val finalResp = dispatchToProvider(provider, req.copy(messages = messages))
+    finalResp.usage?.let { totalInputTokens += it.inputTokens; totalOutputTokens += it.outputTokens }
     return AiChatResponse(
         content   = finalResp.content.ifBlank { "Maximum tool call rounds reached. Check tool results above." },
         toolCalls = toolResults,
-        error     = finalResp.error
+        error     = finalResp.error,
+        usage     = AiUsage(totalInputTokens, totalOutputTokens)
     )
 }
 private val TOOL_DEFS = listOf(AiToolDef(
@@ -318,7 +331,8 @@ private fun executeTool(name: String, args: Map<String, String>, context: Contex
 private data class ProviderResponse(
     val content: String = "",
     val toolCall: ToolCallRequest? = null,
-    val error: String? = null
+    val error: String? = null,
+    val usage: AiUsage? = null
 )
 private data class ToolCallRequest(val name: String, val arguments: Map<String, String>)
 
@@ -377,15 +391,19 @@ private fun sendAnthropic(provider: AiProvider, req: AiChatRequest): ProviderRes
         if (err != null) return@execute ProviderResponse(error = "Anthropic: $err")
 
         val stopReason = j["stop_reason"]?.jsonPrimitive?.content
+        val usage = j["usage"]?.jsonObject?.let { u ->
+            AiUsage(u["input_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    u["output_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+        }
         if (stopReason == "tool_use") {
             val toolBlock = j["content"]?.jsonArray?.firstOrNull { it.jsonObject["type"]?.jsonPrimitive?.content == "tool_use" }?.jsonObject
             val name  = toolBlock?.get("name")?.jsonPrimitive?.content ?: return@execute ProviderResponse(error = "Tool call malformed")
             val input = toolBlock["input"]?.jsonObject ?: return@execute ProviderResponse(error = "Tool input missing")
             val args  = input.entries.associate { (k, v) -> k to v.jsonPrimitive.content }
-            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args))
+            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args), usage = usage)
         }
         val text = j["content"]?.jsonArray?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
-        ProviderResponse(content = text)
+        ProviderResponse(content = text, usage = usage)
     }
 }
 
@@ -436,16 +454,20 @@ private fun sendOpenAI(provider: AiProvider, req: AiChatRequest, endpoint: Strin
         val choice  = j["choices"]?.jsonArray?.firstOrNull()?.jsonObject
         val finish  = choice?.get("finish_reason")?.jsonPrimitive?.content
         val message = choice?.get("message")?.jsonObject
+        val usage   = j["usage"]?.jsonObject?.let { u ->
+            AiUsage(u["prompt_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    u["completion_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+        }
 
         if (finish == "tool_calls") {
             val tc   = message?.get("tool_calls")?.jsonArray?.firstOrNull()?.jsonObject ?: return@execute ProviderResponse(error = "Tool call missing")
             val name = tc["function"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: return@execute ProviderResponse(error = "Tool name missing")
             val argsStr = tc["function"]?.jsonObject?.get("arguments")?.jsonPrimitive?.content ?: "{}"
             val args = runCatching { Json.parseToJsonElement(argsStr).jsonObject.entries.associate { (k,v) -> k to v.jsonPrimitive.content } }.getOrDefault(emptyMap())
-            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args))
+            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args), usage = usage)
         }
         val text = message?.get("content")?.jsonPrimitive?.content ?: ""
-        ProviderResponse(content = text)
+        ProviderResponse(content = text, usage = usage)
     }
 }
 
@@ -506,16 +528,20 @@ private fun sendGemini(provider: AiProvider, req: AiChatRequest): ProviderRespon
 
         val candidate = j["candidates"]?.jsonArray?.firstOrNull()?.jsonObject
         val parts     = candidate?.get("content")?.jsonObject?.get("parts")?.jsonArray
+        val usage     = j["usageMetadata"]?.jsonObject?.let { u ->
+            AiUsage(u["promptTokenCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    u["candidatesTokenCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+        }
 
         // Check for function call.
         val fnCall = parts?.firstOrNull { it.jsonObject.containsKey("functionCall") }?.jsonObject?.get("functionCall")?.jsonObject
         if (fnCall != null) {
             val name = fnCall["name"]?.jsonPrimitive?.content ?: return@execute ProviderResponse(error = "Tool name missing")
             val args = fnCall["args"]?.jsonObject?.entries?.associate { (k,v) -> k to v.jsonPrimitive.content } ?: emptyMap()
-            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args))
+            return@execute ProviderResponse(toolCall = ToolCallRequest(name, args), usage = usage)
         }
         val text = parts?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
-        ProviderResponse(content = text)
+        ProviderResponse(content = text, usage = usage)
     }
 }
 
@@ -669,13 +695,14 @@ private object KeystoreCrypto {
 @Serializable data class AiProvider(
     val id: String, val name: String, val type: String,
     val apiKey: String = "", val model: String = "",
-    val baseUrl: String? = null
+    val baseUrl: String? = null, val budgetUsd: Double? = null
 )
 
 // Persisted to disk — no API key field, key stored in EncryptedSharedPreferences.
 @Serializable data class AiProviderMeta(
     val id: String, val name: String, val type: String,
-    val model: String = "", val baseUrl: String? = null
+    val model: String = "", val baseUrl: String? = null,
+    val budgetUsd: Double? = null
 )
 
 @Serializable data class AiMessage(val role: String, val content: String)
@@ -693,7 +720,7 @@ data class AiToolDef(val name: String, val description: String, val parameters: 
 
 @Serializable data class AiChatResponse(
     val content: String, val toolCalls: List<AiToolCall> = emptyList(),
-    val error: String? = null
+    val error: String? = null, val usage: AiUsage? = null
 )
 
 @Serializable data class AiFileEntry(

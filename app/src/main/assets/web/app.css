@@ -1998,3 +1998,28 @@ details > summary { cursor: pointer; user-select: none; }
     word-break: break-all;
 }
 .bc-preview-actions { display: flex; gap: 8px; }
+
+/* AI chat topbar — token/cost counter */
+.ai-chat-topbar {
+    display: flex; align-items: center; justify-content: flex-end;
+    padding: 4px 12px; border-bottom: 1px solid var(--line);
+    min-height: 26px; flex-shrink: 0;
+}
+#ai-token-counter { font-size: 10.5px; font-family: 'JetBrains Mono', monospace; }
+
+/* AI budget footer */
+.ai-budget-footer {
+    flex-shrink: 0; padding: 8px 10px;
+    border-top: 1px solid var(--line); background: var(--bg);
+    display: flex; flex-direction: column; gap: 4px;
+}
+.ai-budget-bar-wrap {
+    height: 6px; background: var(--elevated); border-radius: 3px; overflow: hidden;
+}
+.ai-budget-bar {
+    height: 100%; border-radius: 3px; background: var(--accent);
+    transition: width .4s ease, background .3s;
+}
+.ai-budget-bar.warn   { background: #d9a200; }
+.ai-budget-bar.danger { background: var(--red, #f43f5e); }
+.ai-budget-labels { display: flex; justify-content: space-between; }
