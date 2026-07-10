@@ -96,14 +96,16 @@ private suspend fun buildContextCache(
     // Run all analysis in parallel — each class is thread-safe (read-only APK access).
     val results = withContext(Dispatchers.IO) {
         kotlinx.coroutines.coroutineScope {
-            val manifest   = async { runSafe("manifest")   { decoder.decode(pkg) } }
-            val components = async { runSafe("components") { inspector.list(pkg) } }
-            val native     = async { runSafe("native")     { nativeScanner.scan(pkg) } }
-            val web        = async { runSafe("web")        { webExtractor.extract(pkg) } }
-            val deeplinks  = async { runSafe("deeplinks")  { buildDeeplinks(pkg, inspector, context) } }
-            val appInfo    = async { runSafe("appInfo")    { buildAppInfo(pkg, context) } }
+            val manifest     = async { runSafe("manifest")      { decoder.decode(pkg) } }
+            val components   = async { runSafe("components")    { inspector.list(pkg) } }
+            val native       = async { runSafe("native")        { nativeScanner.scan(pkg) } }
+            val web          = async { runSafe("web")           { webExtractor.extract(pkg) } }
+            val deeplinks    = async { runSafe("deeplinks")     { buildDeeplinks(pkg, inspector, context) } }
+            val appInfo      = async { runSafe("appInfo")       { buildAppInfo(pkg, context) } }
+            val firebaseRc   = async { runSafe("firebaseRC")    { detectAndFetch(pkg, context) } }
             listOf(manifest.await(), components.await(), native.await(),
-                   web.await(),      deeplinks.await(),  appInfo.await())
+                   web.await(),      deeplinks.await(),  appInfo.await(),
+                   firebaseRc.await())
         }
     }
 
@@ -114,6 +116,7 @@ private suspend fun buildContextCache(
     val web        = results[3]
     val deeplinks  = results[4]
     val appInfo    = results[5]
+    // results[6] = firebaseRC — used inline below via results[6]
 
     val ctx = buildJsonObject {
         put("_meta", buildJsonObject {
@@ -131,6 +134,7 @@ private suspend fun buildContextCache(
         } else JsonNull)
         put("webSecurity", if (web != null) fmt.encodeToJsonElement(com.androidspect.root.WebReport.serializer(), web as com.androidspect.root.WebReport) else JsonNull)
         put("deeplinks",   if (deeplinks != null) fmt.encodeToJsonElement(DeeplinkSnapshot.serializer(), deeplinks as DeeplinkSnapshot) else JsonNull)
+        put("firebaseRC",  if (results[6] != null) fmt.encodeToJsonElement(RemoteConfigResult.serializer(), results[6] as RemoteConfigResult) else JsonNull)
         if (errors.isNotEmpty())
             put("_errors", JsonPrimitive(errors.joinToString("; ")))
     }

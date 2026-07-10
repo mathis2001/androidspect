@@ -54,7 +54,7 @@ fun Routing.remoteConfigRoutes(context: Context) {
 
 // ── Main logic ─────────────────────────────────────────────────────────────────
 
-private fun detectAndFetch(pkg: String, context: Context): RemoteConfigResult {
+internal fun detectAndFetch(pkg: String, context: Context): RemoteConfigResult {
     val apkPath = try {
         context.packageManager.getApplicationInfo(pkg, PackageManager.GET_META_DATA).sourceDir
     } catch (e: Exception) {

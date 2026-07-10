@@ -5,8 +5,10 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Routing
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -122,6 +124,31 @@ fun Routing.aiChatRoutes(context: Context) {
             saveMeta(loadMeta().filter { it.id != id })
             deleteApiKey(id)
             call.respond(mapOf("ok" to "deleted"))
+        }
+
+        // ── Session persistence ───────────────────────────────────────────────
+
+        get("/session") {
+            val pkg     = call.request.queryParameters["pkg"] ?: ""
+            val sessDir = File(context.filesDir, "ai_sessions").also { it.mkdirs() }
+            val file    = File(sessDir, pkg.replace(Regex("[^a-zA-Z0-9._\\-]"), "_") + ".json")
+            if (!file.exists()) return@get call.respond("""{"messages":[]}""")
+            call.respond(file.readText())
+        }
+
+        post("/session") {
+            val pkg     = call.request.queryParameters["pkg"] ?: ""
+            val sessDir = File(context.filesDir, "ai_sessions").also { it.mkdirs() }
+            val file    = File(sessDir, pkg.replace(Regex("[^a-zA-Z0-9._\\-]"), "_") + ".json")
+            file.writeText(call.receiveText())
+            call.respond(mapOf("ok" to "saved"))
+        }
+
+        delete("/session") {
+            val pkg     = call.request.queryParameters["pkg"] ?: ""
+            val sessDir = File(context.filesDir, "ai_sessions")
+            File(sessDir, pkg.replace(Regex("[^a-zA-Z0-9._\\-]"), "_") + ".json").delete()
+            call.respond(mapOf("ok" to "cleared"))
         }
 
         // ── Chat with agentic loop ─────────────────────────────────────────────

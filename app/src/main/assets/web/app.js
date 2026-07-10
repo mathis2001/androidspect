@@ -3980,10 +3980,39 @@ async function fsSaveCustom() {
 
 
 // ============== AI ASSISTANT tab ==============
-let aiMessages       = [];   // { role, content }
+let aiMessages       = [];   // current package's messages (in-memory)
 let aiAttachments    = [];   // { name, path, content }
 let aiProviders      = [];
 let aiSelectedProv   = null;
+
+// ── Session persistence ────────────────────────────────────────────────────────
+
+async function aiSessionLoad(pkg) {
+    try {
+        const raw  = await fetchAuthed(`/api/ai/session?pkg=${encodeURIComponent(pkg)}`);
+        const data = await raw.json();
+        // Filter out typing indicators / errors that shouldn't be persisted.
+        return (data.messages || []).filter(m => !m._typing && !m._error);
+    } catch (_) { return []; }
+}
+
+async function aiSessionSave(pkg, messages) {
+    if (!pkg) return;
+    const clean = messages.filter(m => !m._typing);
+    try {
+        await fetchAuthed(`/api/ai/session?pkg=${encodeURIComponent(pkg)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: clean })
+        });
+    } catch (_) {}
+}
+
+async function aiSessionClear(pkg) {
+    try {
+        await fetchAuthed(`/api/ai/session?pkg=${encodeURIComponent(pkg)}`, { method: 'DELETE' });
+    } catch (_) {}
+}
 
 function initAichat() {
     once('aichat', () => {
@@ -4015,14 +4044,30 @@ function initAichat() {
         $('#ai-prov-clear').addEventListener('click', aiClearProviderForm);
         $('#ai-files-refresh').addEventListener('click', aiLoadFiles);
         $('#ai-files-search').addEventListener('input', aiFilterFiles);
+        $('#ai-clear-session').addEventListener('click', async () => {
+            if (!confirm('Clear conversation history for this package?')) return;
+            aiMessages = []; aiAttachments = [];
+            await aiSessionClear(S.pkg);
+            aiRenderAttachments();
+            aiAddSystemWelcome();
+            aiScrollBottom();
+        });
     });
     aiLoadProviders();
     aiLoadFiles();
     aiCtxCheckStatus();
-    // Reset conversation when package changes.
+    // Load persisted session for this package, or start fresh.
     aiMessages = []; aiAttachments = [];
     aiRenderAttachments();
-    aiAddSystemWelcome();
+    aiSessionLoad(S.pkg || '').then(msgs => {
+        if (msgs.length) {
+            aiMessages = msgs;
+            aiRenderMessages();
+            aiScrollBottom();
+        } else {
+            aiAddSystemWelcome();
+        }
+    });
 }
 function refreshAichat() { aiLoadFiles(); }
 
@@ -4301,6 +4346,8 @@ async function aiSend() {
         aiSetGenerating(false);
         aiRenderMessages();
         aiScrollBottom();
+        // Persist conversation.
+        aiSessionSave(S.pkg || '', aiMessages);
     }
 }
 
