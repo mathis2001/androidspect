@@ -45,6 +45,7 @@ Actions:
 * Device file explorer/manager.
 * Screen Capture (Screenshots and Screen recordings)
 * Clipboard dumping and monitoring (Note: Since Android 10 (SDK 29), apps in background can't access the clipboard data and needs to go foreground.)
+* Barcodes and QR codes client-side generation.
 * Pentest environment management (global proxy settings and frida-server download/install/start/stop).
 
 
@@ -189,6 +190,7 @@ After the bypass, the browser asks for the six-character password shown in the a
 
 ![AI-Review](screenshots/23-AI.PNG)
 ![AI-Review](screenshots/24-AI.PNG)
+![AI](screenshots/29-AI.PNG)
 
 ### Process list from `/proc`.
 
@@ -211,6 +213,10 @@ After the bypass, the browser asks for the six-character password shown in the a
 ### Clipboard dumping and monitoring
 
 ![Clipboard](screenshots/21-Clipboard.PNG)
+
+### Barcodes & QRcodes generator
+
+![Barcodes](screenshots/28-Barcodes.PNG)
 
 ### Pentesting environment management
 
