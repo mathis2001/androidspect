@@ -1172,6 +1172,13 @@ td.num  { color: var(--cyan); text-align: right; }
     text-transform: uppercase; color: var(--text);
 }
 .notes-rail-toolbar { padding: 0 10px 8px; gap: 6px; flex-wrap: wrap; }
+.notes-md-toolbar { padding: 0 10px 8px; gap: 4px; flex-wrap: wrap; }
+.notes-md-btn {
+    min-width: 26px;
+    padding: 4px 7px;
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+}
 
 /* ---- Notes editor / preview (shared) ---- */
 .notes-wrap {

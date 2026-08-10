@@ -740,9 +740,11 @@
                                     <option value="anthropic">Anthropic (Claude)</option>
                                     <option value="openai">OpenAI (GPT)</option>
                                     <option value="gemini">Google (Gemini)</option>
+                                    <option value="deepseek">DeepSeek</option>
                                     <option value="custom">Custom / Ollama / LM Studio</option>
                                 </select>
                                 <input class="input mono small" id="ai-prov-key"   placeholder="API Key (leave blank for local)">
+                                <select class="input small" id="ai-prov-model-sel" style="display:none"></select>
                                 <input class="input mono small" id="ai-prov-model" placeholder="Model (e.g. claude-opus-4-6, gpt-4o, gemini-1.5-flash, llama3)">
                                 <input class="input mono small" id="ai-prov-budget" type="number" min="0" step="0.01" placeholder="Budget in USD (optional, e.g. 5.00)">
                                 <input class="input mono small" id="ai-prov-url"   placeholder="Base URL (custom only, e.g. http://localhost:11434/v1/chat/completions)" style="display:none">
@@ -830,6 +832,17 @@
                     <button class="btn ghost small" id="notes-preview-toggle">Preview</button>
                     <button class="btn ghost small" id="notes-download" title="Download notes as a .md file"><svg class="ic ic-sm"><use href="#i-download"/></svg></button>
                     <button class="btn ghost small danger" id="notes-clear" title="Delete all notes for this app"><svg class="ic ic-sm"><use href="#i-trash"/></svg></button>
+                </div>
+                <div class="toolbar notes-md-toolbar" id="notes-md-toolbar">
+                    <button class="btn ghost small notes-md-btn" id="notes-md-bold" title="Bold (Ctrl+B)"><b>B</b></button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-italic" title="Italic (Ctrl+I)"><i>I</i></button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-code" title="Inline code">&lt;/&gt;</button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-codeblock" title="Code block">{ }</button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-quote" title="Blockquote">&gt;</button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-ul" title="Bullet list">&bull;</button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-ol" title="Numbered list">1.</button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-link" title="Link"><svg class="ic ic-sm"><use href="#i-link"/></svg></button>
+                    <button class="btn ghost small notes-md-btn" id="notes-md-image" title="Image"><svg class="ic ic-sm"><use href="#i-camera"/></svg></button>
                 </div>
                 <div class="notes-wrap grow-y">
                     <textarea id="notes-editor" class="notes-editor"

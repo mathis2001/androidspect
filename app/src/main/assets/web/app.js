@@ -2256,6 +2256,17 @@ function notesSetupRail() {
     $('#notes-preview-toggle').addEventListener('click', notesTogglePreview);
     $('#notes-download').addEventListener('click', notesDownload);
 
+    // Markdown toolbar
+    $('#notes-md-bold').addEventListener('click', () => notesWrapSelection('**', '**', 'bold text'));
+    $('#notes-md-italic').addEventListener('click', () => notesWrapSelection('*', '*', 'italic text'));
+    $('#notes-md-code').addEventListener('click', () => notesWrapSelection('`', '`', 'code'));
+    $('#notes-md-codeblock').addEventListener('click', () => notesWrapSelection('```\n', '\n```', 'code'));
+    $('#notes-md-quote').addEventListener('click', () => notesPrefixLines(line => line ? '> ' + line : '>'));
+    $('#notes-md-ul').addEventListener('click', () => notesPrefixLines(line => line ? '- ' + line : '- '));
+    $('#notes-md-ol').addEventListener('click', () => notesPrefixLines((line, i) => line ? `${i + 1}. ${line}` : `${i + 1}. `));
+    $('#notes-md-link').addEventListener('click', () => notesInsertLink(false));
+    $('#notes-md-image').addEventListener('click', () => notesInsertLink(true));
+
     // Collapse / expand the rail
     $('#notes-rail-handle').addEventListener('click', notesToggleRail);
 
@@ -2422,6 +2433,63 @@ function notesTogglePreview() {
 
 function notesRenderPreview() {
     $('#notes-preview').innerHTML = mdToHtml($('#notes-editor').value);
+}
+
+// ── Markdown toolbar helpers ─────────────────────────────────────────────────
+// All operate on the raw textarea selection, then dispatch a synthetic
+// 'input' event so the existing dirty-tracking / autosave listener picks up
+// the change exactly as if the user had typed it.
+
+function notesEditorFireInput() {
+    $('#notes-editor').dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** Wraps the current selection with `before`/`after` (e.g. `**bold**`). */
+function notesWrapSelection(before, after, placeholder) {
+    if (notesPreview) notesTogglePreview();
+    const ed = $('#notes-editor');
+    ed.focus();
+    const start = ed.selectionStart, end = ed.selectionEnd;
+    const val = ed.value;
+    const selected = val.slice(start, end) || placeholder;
+    ed.value = val.slice(0, start) + before + selected + after + val.slice(end);
+    ed.setSelectionRange(start + before.length, start + before.length + selected.length);
+    notesEditorFireInput();
+}
+
+/**
+ * Applies `prefixFn(line, index)` to every line touched by the current
+ * selection (or just the current line if nothing is selected). Used for
+ * blockquote and list buttons.
+ */
+function notesPrefixLines(prefixFn) {
+    if (notesPreview) notesTogglePreview();
+    const ed = $('#notes-editor');
+    ed.focus();
+    const start = ed.selectionStart, end = ed.selectionEnd;
+    const val = ed.value;
+    const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+    let lineEnd = val.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = val.length;
+    const newBlock = val.slice(lineStart, lineEnd).split('\n').map(prefixFn).join('\n');
+    ed.value = val.slice(0, lineStart) + newBlock + val.slice(lineEnd);
+    ed.setSelectionRange(lineStart, lineStart + newBlock.length);
+    notesEditorFireInput();
+}
+
+/** Inserts `[text](url)` or `![alt text](url)`, selecting the "url" placeholder to type over. */
+function notesInsertLink(isImage) {
+    if (notesPreview) notesTogglePreview();
+    const ed = $('#notes-editor');
+    ed.focus();
+    const start = ed.selectionStart, end = ed.selectionEnd;
+    const val = ed.value;
+    const label  = val.slice(start, end) || (isImage ? 'alt text' : 'link text');
+    const prefix = isImage ? '![' : '[';
+    ed.value = val.slice(0, start) + prefix + label + '](url)' + val.slice(end);
+    const urlStart = start + prefix.length + label.length + 2;
+    ed.setSelectionRange(urlStart, urlStart + 3);
+    notesEditorFireInput();
 }
 
 /**
@@ -4099,6 +4167,18 @@ function initAichat() {
         });
         $('#ai-prov-type').addEventListener('change', () => {
             $('#ai-prov-url').style.display = $('#ai-prov-type').value === 'custom' ? '' : 'none';
+            aiPopulateModelSelect($('#ai-prov-type').value, '');
+        });
+        $('#ai-prov-model-sel').addEventListener('change', () => {
+            const v = $('#ai-prov-model-sel').value;
+            if (v === AI_MODEL_CUSTOM) {
+                $('#ai-prov-model').style.display = '';
+                $('#ai-prov-model').value = '';
+                $('#ai-prov-model').focus();
+            } else {
+                $('#ai-prov-model').style.display = 'none';
+                $('#ai-prov-model').value = v;
+            }
         });
         $('#ai-prov-save').addEventListener('click',  aiSaveProvider);
         $('#ai-prov-clear').addEventListener('click', aiClearProviderForm);
@@ -4114,6 +4194,7 @@ function initAichat() {
             aiResetTokenCounter();
         });
     });
+    aiPopulateModelSelect('anthropic', '');
     aiLoadProviders();
     aiLoadFiles();
     aiCtxCheckStatus();
@@ -4171,7 +4252,57 @@ const AI_PRICING = {
     'gemini-1.5-pro':    [1.25,   5.00],
     'gemini-2.0-flash':  [0.10,   0.40],
     'gemini-2.5-pro':    [1.25,  10.00],
+    // DeepSeek
+    'deepseek-chat':     [0.27,   1.10],
+    'deepseek-reasoner': [0.55,   2.19],
 };
+
+// Curated model choices per provider type, shown in the "Manage providers"
+// dropdown. Custom/Ollama/LM Studio providers have no fixed catalogue since
+// the model name depends on what the user has pulled locally.
+const AI_MODELS = {
+    anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+    openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o1-mini', 'o3-mini'],
+    gemini:    ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    deepseek:  ['deepseek-chat', 'deepseek-reasoner'],
+};
+const AI_MODEL_CUSTOM = '__custom__';
+
+/**
+ * Fills #ai-prov-model-sel with the curated list for `type` and toggles it
+ * against the free-text #ai-prov-model input. `model` is the currently
+ * saved value (used when editing an existing provider); pass '' to reset.
+ */
+function aiPopulateModelSelect(type, model) {
+    const sel   = $('#ai-prov-model-sel');
+    const input = $('#ai-prov-model');
+    const list  = AI_MODELS[type];
+    if (!list) {
+        // No catalogue for this provider type (e.g. custom/Ollama) - free text only.
+        sel.innerHTML = '';
+        sel.style.display = 'none';
+        input.style.display = '';
+        return;
+    }
+    sel.innerHTML = list.map(m => `<option value="${fmt.esc(m)}">${fmt.esc(m)}</option>`).join('') +
+        `<option value="${AI_MODEL_CUSTOM}">Custom / other…</option>`;
+    sel.style.display = '';
+    const known = model && list.includes(model);
+    if (known) {
+        sel.value = model;
+        input.value = model;
+        input.style.display = 'none';
+    } else if (model) {
+        // Saved model isn't in the catalogue (older/unlisted model) - keep it editable.
+        sel.value = AI_MODEL_CUSTOM;
+        input.style.display = '';
+        input.value = model;
+    } else {
+        sel.value = list[0];
+        input.value = list[0];
+        input.style.display = 'none';
+    }
+}
 
 let aiSessionTokens = { input: 0, output: 0 };  // cumulative for this session
 
@@ -4306,10 +4437,10 @@ function aiEditProvider(id) {
     $('#ai-prov-type').value  = p.type;
     $('#ai-prov-key').value   = '';
     $('#ai-prov-key').placeholder = 'Leave blank to keep existing key';
-    $('#ai-prov-model').value  = p.model || '';
     $('#ai-prov-budget').value = p.budgetUsd != null ? p.budgetUsd : '';
     $('#ai-prov-url').value    = p.baseUrl || '';
     $('#ai-prov-url').style.display = p.type === 'custom' ? '' : 'none';
+    aiPopulateModelSelect(p.type, p.model || '');
 }
 
 async function aiDeleteProvider(id) {
@@ -4359,6 +4490,7 @@ function aiClearProviderForm() {
     $('#ai-prov-id').value = '';
     $('#ai-prov-type').value = 'anthropic';
     $('#ai-prov-url').style.display = 'none';
+    aiPopulateModelSelect('anthropic', '');
 }
 
 // ── File browser ───────────────────────────────────────────────────────────────

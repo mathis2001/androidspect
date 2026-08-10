@@ -341,6 +341,7 @@ private fun dispatchToProvider(provider: AiProvider, req: AiChatRequest): Provid
         "anthropic" -> sendAnthropic(provider, req)
         "openai"    -> sendOpenAI(provider, req, "https://api.openai.com/v1/chat/completions")
         "gemini"    -> sendGemini(provider, req)
+        "deepseek"  -> sendOpenAI(provider, req, "https://api.deepseek.com/chat/completions")
         "custom"    -> sendOpenAI(provider, req, provider.baseUrl
             ?: return ProviderResponse(error = "Custom provider has no base URL"))
         else        -> ProviderResponse(error = "Unknown provider type: ${provider.type}")
