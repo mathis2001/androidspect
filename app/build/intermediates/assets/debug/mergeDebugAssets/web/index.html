@@ -73,6 +73,7 @@
 
         <nav class="sister-nav" aria-label="Sister tools">
             <a href="apkauditor/index.html" target="_blank" rel="noopener" title="Static APK analysis">APK Auditor</a>
+            <a class="tab" data-tab="yeswehack" role="tab" title="YesWeHack — programs with a Mobile (Android) scope">YesWeHack</a>
         </nav>
 
         <div class="header-spacer"></div>
@@ -475,6 +476,40 @@
                             <div id="frida-install-status" class="env-result" style="margin-top:6px;white-space:pre-wrap"></div>
                         </div>
 
+                        <!-- YesWeHack token -->
+                        <div class="env-card">
+                            <div class="env-card-h"><svg class="ic ic-sm"><use href="#i-cloud"/></svg> YesWeHack Token</div>
+                            <p class="muted small">Hunters aren't issued long-lived API keys, so this uses your YesWeHack session JWT instead. Log in to yeswehack.com in a browser, open dev tools → Application/Storage, and copy the JWT (or the <code>Authorization: Bearer …</code> value from an API request). Stored encrypted on-device. It expires with your web session — re-paste when the YesWeHack tab starts reporting an auth error.</p>
+                            <div class="env-row">
+                                <input class="input mono small" type="password" id="ywh-token-input" placeholder="eyJhbGciOi…" style="flex:1;min-width:0" autocomplete="off" spellcheck="false">
+                                <button class="btn small" id="ywh-token-save">Save</button>
+                                <button class="btn ghost small danger" id="ywh-token-clear">Clear</button>
+                            </div>
+                            <div id="ywh-token-status" class="env-result muted small">Loading…</div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- YESWEHACK -->
+                <section class="panel hidden" data-tab="yeswehack">
+                    <div class="toolbar">
+                        <button class="btn small" id="ywh-fetch" title="Fetch programs with a Mobile (Android) scope">🔍 Fetch programs</button>
+                        <button class="btn ghost small" id="ywh-refresh" title="Bypass the cache and re-fetch from YesWeHack"><svg class="ic ic-sm"><use href="#i-refresh"/></svg></button>
+                        <input class="input mono small" id="ywh-filter" placeholder="Filter by name…" style="flex:1;max-width:240px">
+                        <select class="input small" id="ywh-sort" title="Sort order">
+                            <option value="updated-desc">Recent changes</option>
+                            <option value="new-old">Newest first</option>
+                            <option value="old-new">Oldest first</option>
+                            <option value="name-az">Name A→Z</option>
+                        </select>
+                        <button class="btn ghost small toggle" id="ywh-public-only"  aria-pressed="false" title="Show only public programs">Public</button>
+                        <button class="btn ghost small toggle" id="ywh-private-only" aria-pressed="false" title="Show only private (invite-only) programs">Private</button>
+                        <button class="btn ghost small toggle" id="ywh-bounty-only"  aria-pressed="false" title="Show only rewarding (bounty) programs">Bounty</button>
+                        <span class="muted small" id="ywh-status"></span>
+                    </div>
+                    <div id="ywh-body" class="grow-y" style="overflow-y:auto;padding:4px 2px">
+                        <div class="empty muted">Set a YesWeHack token in <a class="link" data-tab-jump="envsetup">Env Setup</a>, then click "Fetch programs".</div>
                     </div>
                 </section>
 

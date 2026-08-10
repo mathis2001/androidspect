@@ -1,8 +1,6 @@
 package com.androidspect.server.routes
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
@@ -31,10 +29,6 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.spec.GCMParameterSpec
 
 /**
  * AI Assistant — multi-provider chat with autonomous file access via tool use.
@@ -47,6 +41,8 @@ import javax.crypto.spec.GCMParameterSpec
  *   list_directory(path) → directory listing
  *   read_file(path)      → file content (capped at 200 KB)
  */
+private const val AI_KEY_ALIAS = "androidspect_ai_key"
+
 fun Routing.aiChatRoutes(context: Context) {
 
     val metaFile = File(context.filesDir, "ai_providers.json")
@@ -63,14 +59,14 @@ fun Routing.aiChatRoutes(context: Context) {
 
     fun saveApiKey(id: String, key: String) {
         if (key.isBlank()) return
-        val encrypted = KeystoreCrypto.encrypt(context, key)
+        val encrypted = KeystoreCrypto.encrypt(key, AI_KEY_ALIAS)
         File(keysDir, "${id}.key").writeBytes(encrypted)
     }
 
     fun loadApiKey(id: String): String {
         val file = File(keysDir, "${id}.key")
         if (!file.exists()) return ""
-        return runCatching { KeystoreCrypto.decrypt(context, file.readBytes()) }.getOrDefault("")
+        return runCatching { KeystoreCrypto.decrypt(file.readBytes(), AI_KEY_ALIAS) }.getOrDefault("")
     }
 
     fun deleteApiKey(id: String) { File(keysDir, "${id}.key").delete() }
@@ -644,52 +640,6 @@ private fun buildFileTree(context: Context, pkg: String): List<AiFileEntry> =
             .toList()
     }.sortedWith(compareBy({ it.category }, { it.name }))
 
-// ── Android Keystore encryption ────────────────────────────────────────────────
-
-/**
- * Encrypts/decrypts strings using AES-256-GCM with a key stored in the Android Keystore.
- * No external dependency — uses only android.security.keystore and javax.crypto.
- *
- * Wire format: [IV_LENGTH(1 byte)][IV][ciphertext]
- */
-private object KeystoreCrypto {
-    private const val KEY_ALIAS  = "androidspect_ai_key"
-    private const val KEYSTORE   = "AndroidKeyStore"
-    private const val ALGO       = "AES/GCM/NoPadding"
-    private const val GCM_TAG    = 128
-
-    private fun getOrCreateKey(): javax.crypto.SecretKey {
-        val ks = KeyStore.getInstance(KEYSTORE).also { it.load(null) }
-        ks.getKey(KEY_ALIAS, null)?.let { return it as javax.crypto.SecretKey }
-        val spec = KeyGenParameterSpec.Builder(KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE).also {
-            it.init(spec)
-        }.generateKey()
-    }
-
-    fun encrypt(@Suppress("UNUSED_PARAMETER") context: Context, plaintext: String): ByteArray {
-        val cipher = Cipher.getInstance(ALGO)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val iv         = cipher.iv
-        val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
-        // Prefix: 1 byte iv-length, then iv, then ciphertext.
-        return byteArrayOf(iv.size.toByte()) + iv + ciphertext
-    }
-
-    fun decrypt(@Suppress("UNUSED_PARAMETER") context: Context, data: ByteArray): String {
-        val ivLen      = data[0].toInt() and 0xFF
-        val iv         = data.copyOfRange(1, 1 + ivLen)
-        val ciphertext = data.copyOfRange(1 + ivLen, data.size)
-        val cipher     = Cipher.getInstance(ALGO)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG, iv))
-        return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
-    }
-}
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 

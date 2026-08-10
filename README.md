@@ -29,6 +29,7 @@ Per-package static inspection and dynamic tests:
   * Reports writing
   * Diff analysis
   * Frida scripts & Exploit development
+* A YesWeHack tab that lists bug bounty programs declaring a Mobile (Android) scope, with public/private, bounty-only, and date-based filters. Since hunters aren't issued long-lived API keys, it authenticates with a session JWT you paste into Env Setup.
 
 Live runtime:
 
@@ -230,7 +231,7 @@ After the bypass, the browser asks for the six-character password shown in the a
 * `Host` header is restricted to `localhost`, `127.0.0.1`, and the current LAN IPv4 of the device. DNS-rebinding requests are rejected.
 * All write operations (clear data, force-stop, prefs write, exec) are POST.
 * The on-phone `su` grant is required. Without it the server starts but every privileged primitive returns an error.
-* No analytics, no crash reporters, no auto-update, no outbound network calls of any kind.
+* No analytics, no crash reporters, no auto-update. The only outbound calls are the ones you explicitly trigger: Frida-server releases (GitHub), and — if you set a YesWeHack token — the YesWeHack API. Everything else stays on-device.
 
 ## Stack
 

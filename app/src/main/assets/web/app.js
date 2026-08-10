@@ -3593,13 +3593,48 @@ function initEnvsetup() {
                 envLoadProxy();
             } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
         });
+
+        // YesWeHack token
+        $('#ywh-token-save').addEventListener('click', async () => {
+            const input = $('#ywh-token-input');
+            const token = input.value.trim();
+            const st = $('#ywh-token-status');
+            if (!token) { toast('Paste a token first', 'err'); return; }
+            try {
+                await api.put('/api/ywh/token', { token });
+                input.value = '';
+                toast('YesWeHack token saved', 'ok');
+                ywhLoadTokenStatus();
+            } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
+        });
+        $('#ywh-token-clear').addEventListener('click', async () => {
+            if (!confirm('Clear the stored YesWeHack token and cached program list?')) return;
+            try {
+                await api.del('/api/ywh/token');
+                toast('YesWeHack token cleared', 'ok');
+                ywhLoadTokenStatus();
+            } catch (e) { toast(e.message, 'err'); }
+        });
     });
 
     envLoadProxy();
     fridaLoadStatus();
     fridaLoadReleases();
+    ywhLoadTokenStatus();
 }
-function refreshEnvsetup() { envLoadProxy(); fridaLoadStatus(); }
+function refreshEnvsetup() { envLoadProxy(); fridaLoadStatus(); ywhLoadTokenStatus(); }
+
+async function ywhLoadTokenStatus() {
+    const st = $('#ywh-token-status');
+    if (!st) return;
+    try {
+        const r = await api.get('/api/ywh/token/status');
+        st.textContent = r.present
+            ? `✓ Token configured${r.savedAt ? ' · saved ' + (fmt.ago ? fmt.ago(+r.savedAt) : new Date(+r.savedAt).toLocaleString()) : ''}`
+            : 'No token configured yet.';
+        st.className = 'env-result ' + (r.present ? 'ok' : '');
+    } catch (e) { st.textContent = e.message; st.className = 'env-result err'; }
+}
 
 async function fridaLoadStatus() {
     const box = $('#frida-status-box');
@@ -5111,9 +5146,252 @@ async function bcCopyImg() {
     } catch (e) { toast('Copy failed: ' + e.message, 'err'); }
 }
 
+// ============== YESWEHACK tab ==============
+// Global tab (not per-app): lists YesWeHack bug bounty programs that declare
+// a Mobile (Android) scope. Auth is a session JWT the user pastes in Env
+// Setup - see ywhLoadTokenStatus() there. The backend does the heavy lifting
+// (paginate /programs, fetch each program's scopes, filter, cache); this
+// module just fetches the (possibly cached) result and handles client-side
+// filter/sort so re-sorting doesn't re-hit the network.
+let ywhPrograms = [];   // raw program objects as returned by the backend (pass-through JSON)
+let ywhFetchedAt = null;
+let ywhStatusBase = '';   // status text set by the last fetch; ywhRender() appends to it, never overwrites it
+let ywhDetailCache = new Map(); // slug -> full program detail (lazily fetched by "More info")
+let ywhExpanded = new Set();    // slugs currently showing their detail panel
+
+// The YesWeHack API's exact date field names on /programs weren't
+// confirmed against a live token, so instead of a fixed key list (which
+// silently produces no match - and no visible sort change - if the guess is
+// wrong) this scans every key on the program object and matches by pattern.
+// Much more likely to hit the real field name whatever it's actually called.
+const YWH_CREATED_PATTERNS = [/^start/i, /created/i, /^date_start/i];
+const YWH_UPDATED_PATTERNS = [/updated/i, /modif/i, /activity/i, /^last_/i];
+
+function ywhDateOf(p, patterns) {
+    for (const key of Object.keys(p)) {
+        if (!patterns.some(re => re.test(key))) continue;
+        const v = p[key];
+        if (typeof v === 'string' && v) {
+            const t = Date.parse(v);
+            if (!isNaN(t)) return t;
+        }
+    }
+    return null;
+}
+
+function initYeswehack() {
+    once('yeswehack', () => {
+        $('#ywh-fetch').addEventListener('click', () => ywhFetch(false));
+        $('#ywh-refresh').addEventListener('click', () => ywhFetch(true));
+        $('#ywh-filter').addEventListener('input', debounce(ywhRender, 150));
+        $('#ywh-sort').addEventListener('change', ywhRender);
+        $('#ywh-public-only').addEventListener('click', () => {
+            const btn = $('#ywh-public-only');
+            const on = btn.getAttribute('aria-pressed') !== 'true';
+            btn.setAttribute('aria-pressed', String(on));
+            if (on) $('#ywh-private-only').setAttribute('aria-pressed', 'false');
+            ywhRender();
+        });
+        $('#ywh-private-only').addEventListener('click', () => {
+            const btn = $('#ywh-private-only');
+            const on = btn.getAttribute('aria-pressed') !== 'true';
+            btn.setAttribute('aria-pressed', String(on));
+            if (on) $('#ywh-public-only').setAttribute('aria-pressed', 'false');
+            ywhRender();
+        });
+        $('#ywh-bounty-only').addEventListener('click', () => {
+            const btn = $('#ywh-bounty-only');
+            btn.setAttribute('aria-pressed', String(btn.getAttribute('aria-pressed') !== 'true'));
+            ywhRender();
+        });
+    });
+}
+function refreshYeswehack() { /* explicit "Fetch programs" button - no auto-refresh on tab re-entry */ }
+
+async function ywhFetch(refresh) {
+    const st = $('#ywh-status');
+    const body = $('#ywh-body');
+    const fetchBtn = $('#ywh-fetch');
+    fetchBtn.disabled = true;
+    st.textContent = refresh
+        ? 'Re-fetching from YesWeHack… this walks every program\'s scope, can take a minute.'
+        : 'Loading…';
+    try {
+        const r = await api.get(`/api/ywh/programs${refresh ? '?refresh=true' : ''}`);
+        ywhPrograms = r.programs || [];
+        ywhFetchedAt = r.fetchedAt || Date.now();
+        ywhDetailCache = new Map();
+        ywhExpanded = new Set();
+        ywhStatusBase = `${ywhPrograms.length} program(s) with a Mobile (Android) scope` +
+            (r.skipped ? ` · ${r.skipped} skipped (fetch errors)` : '') +
+            ` · fetched ${new Date(+ywhFetchedAt).toLocaleString()}`;
+        ywhRender();
+    } catch (e) {
+        ywhStatusBase = '';
+        st.textContent = '';
+        body.innerHTML = `<div class="empty muted" style="color:var(--red)">${fmt.esc(e.message)}</div>`;
+        toast(e.message, 'err');
+    } finally {
+        fetchBtn.disabled = false;
+    }
+}
+
+function ywhRender() {
+    const body = $('#ywh-body');
+    if (!ywhPrograms.length) {
+        body.innerHTML = '<div class="empty muted">No programs loaded yet. Click "Fetch programs".</div>';
+        return;
+    }
+
+    const q = $('#ywh-filter').value.trim().toLowerCase();
+    const publicOnly  = $('#ywh-public-only').getAttribute('aria-pressed') === 'true';
+    const privateOnly = $('#ywh-private-only').getAttribute('aria-pressed') === 'true';
+    const bountyOnly  = $('#ywh-bounty-only').getAttribute('aria-pressed') === 'true';
+    const sort = $('#ywh-sort').value;
+
+    let list = ywhPrograms.filter(p => {
+        const title = (p.title || p.slug || '').toLowerCase();
+        if (q && !title.includes(q)) return false;
+        if (publicOnly && !p.public) return false;
+        if (privateOnly && p.public) return false;
+        if (bountyOnly && !p.bounty) return false;
+        return true;
+    });
+
+    let dateFieldMissing = false;
+    if (sort !== 'name-az') {
+        const patterns = (sort === 'new-old' || sort === 'old-new') ? YWH_CREATED_PATTERNS : YWH_UPDATED_PATTERNS;
+        dateFieldMissing = list.every(p => ywhDateOf(p, patterns) == null);
+    }
+
+    list = list.slice().sort((a, b) => {
+        if (sort === 'name-az') return (a.title || a.slug || '').localeCompare(b.title || b.slug || '');
+        if (sort === 'new-old' || sort === 'old-new') {
+            const da = ywhDateOf(a, YWH_CREATED_PATTERNS), db = ywhDateOf(b, YWH_CREATED_PATTERNS);
+            if (da == null && db == null) return (a.title || '').localeCompare(b.title || '');
+            if (da == null) return 1;
+            if (db == null) return -1;
+            return sort === 'new-old' ? db - da : da - db;
+        }
+        // 'updated-desc' (default): most recently changed first.
+        const ua = ywhDateOf(a, YWH_UPDATED_PATTERNS), ub = ywhDateOf(b, YWH_UPDATED_PATTERNS);
+        if (ua == null && ub == null) return (a.title || '').localeCompare(b.title || '');
+        if (ua == null) return 1;
+        if (ub == null) return -1;
+        return ub - ua;
+    });
+
+    const st = $('#ywh-status');
+    if (st) {
+        st.textContent = ywhStatusBase + (dateFieldMissing
+            ? ' · no date field found for this sort — showing name order' : '');
+    }
+
+    if (!list.length) {
+        body.innerHTML = '<div class="empty muted">No programs match this filter.</div>';
+        return;
+    }
+
+    body.innerHTML = `<div class="ywh-list">${list.map(ywhCard).join('')}</div>`;
+    $$('.ywh-more-btn', body).forEach(btn => btn.addEventListener('click', () => ywhToggleDetail(btn.dataset.slug)));
+}
+
+function ywhCard(p) {
+    const slug  = p.slug || '';
+    const title = fmt.esc(p.title || slug || 'Untitled program');
+    const url   = `https://yeswehack.com/programs/${encodeURIComponent(slug)}`;
+
+    const badges = [
+        p.public ? '<span class="tg accent">Public</span>' : '<span class="tg warn">Private</span>',
+        p.bounty ? '<span class="tg accent">Bounty</span>' : '',
+        p.status ? `<span class="tg">${fmt.esc(p.status)}</span>` : ''
+    ].filter(Boolean).join('');
+
+    const scopeTypes = [...new Set((p.scopes || []).map(s => s.scope_type).filter(Boolean))];
+    const scopeBadges = scopeTypes.map(t =>
+        `<span class="tg cyan">${fmt.esc(t)}</span>`
+    ).join('');
+
+    const reward = p.reward_policy || {};
+    const rewardLine = (reward.min_reward != null || reward.max_reward != null)
+        ? `<span class="muted small">Reward: ${reward.min_reward ?? '?'} – ${reward.max_reward ?? '?'}</span>`
+        : '';
+
+    const updated = ywhDateOf(p, YWH_UPDATED_PATTERNS);
+    const created  = ywhDateOf(p, YWH_CREATED_PATTERNS);
+    const dateLine = [
+        created  ? `started ${new Date(created).toLocaleDateString()}` : '',
+        updated  ? `updated ${new Date(updated).toLocaleDateString()}` : ''
+    ].filter(Boolean).join(' · ');
+
+    const isOpen = ywhExpanded.has(slug);
+
+    return `<div class="ywh-card">
+        <div class="ywh-card-head">
+            <span class="ywh-title">${title}</span>
+            ${badges}
+            <a class="link" href="${fmt.esc(url)}" target="_blank" rel="noopener" style="margin-left:auto">Open ↗</a>
+            <button class="btn ghost small ywh-more-btn" data-slug="${fmt.esc(slug)}">${isOpen ? 'Hide info' : 'More info'}</button>
+        </div>
+        <div class="ywh-card-meta">
+            ${scopeBadges}
+            ${rewardLine}
+            ${dateLine ? `<span class="muted small">${fmt.esc(dateLine)}</span>` : ''}
+        </div>
+        ${isOpen ? ywhCardDetail(slug) : ''}
+    </div>`;
+}
+
+/**
+ * Renders the "More info" panel for a program: in-scope Android/Play Store
+ * targets. Backed by a live GET /api/ywh/programs/{slug} (cached
+ * client-side per slug) rather than the possibly-stale snapshot from the
+ * last "Fetch programs" run. Reward grid and qualifying vulnerability types
+ * were dropped - the YesWeHack API doesn't expose them.
+ */
+function ywhCardDetail(slug) {
+    if (!ywhDetailCache.has(slug)) return '<div class="ywh-detail muted small">Loading…</div>';
+    const d = ywhDetailCache.get(slug);
+    if (d.__error) return `<div class="ywh-detail" style="color:var(--red)">${fmt.esc(d.__error)}</div>`;
+
+    const androidScopes = (d.scopes || []).filter(s => (s.scope_type || '').toLowerCase().includes('android'));
+    const scopeHtml = androidScopes.length
+        ? androidScopes.map(s => {
+            const target = s.scope || '';
+            return /^https?:\/\//i.test(target)
+                ? `<a class="link mono small" href="${fmt.esc(target)}" target="_blank" rel="noopener">${fmt.esc(target)}</a>`
+                : `<code class="mono small">${fmt.esc(target)}</code>`;
+        }).join('<br>')
+        : '<span class="muted small">No Android scope target listed.</span>';
+
+    return `<div class="ywh-detail">
+        <div class="ywh-detail-h">In-scope Android targets</div>
+        <div class="ywh-detail-body">${scopeHtml}</div>
+    </div>`;
+}
+
+async function ywhToggleDetail(slug) {
+    if (ywhExpanded.has(slug)) {
+        ywhExpanded.delete(slug);
+        ywhRender();
+        return;
+    }
+    ywhExpanded.add(slug);
+    if (!ywhDetailCache.has(slug)) {
+        ywhRender(); // show the "Loading…" placeholder immediately
+        try {
+            const detail = await api.get(`/api/ywh/programs/${encodeURIComponent(slug)}`);
+            ywhDetailCache.set(slug, detail);
+        } catch (e) {
+            ywhDetailCache.set(slug, { __error: e.message });
+        }
+    }
+    ywhRender();
+}
+
 // ============== Dispatch ==============
-const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, remoteconfig: initRemoteconfig, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard, barcode: initBarcode };
-const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, remoteconfig: refreshRemoteconfig, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard, barcode: refreshBarcode };
+const INITS = { files: initFiles, prefs: initPrefs, sqlite: initSqlite, manifest: initManifest, components: initComponents, native: initNative, processes: initProcesses, net: initNet, logcat: initLogcat, shell: initShell, code: initCode, deeplinks: initDeeplinks, devfiles: initDevfiles, snapshots: initSnapshots, web: initWeb, overlay: initOverlay, fridascripts: initFridaScripts, aichat: initAichat, remoteconfig: initRemoteconfig, envsetup: initEnvsetup, screenshot: initScreenshot, clipboard: initClipboard, barcode: initBarcode, yeswehack: initYeswehack };
+const REFRESH = { files: refreshFiles, prefs: refreshPrefs, sqlite: refreshSqlite, manifest: refreshManifest, components: refreshComponents, native: refreshNative, processes: refreshProcesses, net: refreshNet, logcat: refreshLogcat, shell: refreshShell, code: refreshCode, deeplinks: refreshDeeplinks, devfiles: refreshDevfiles, snapshots: refreshSnapshots, web: refreshWeb, overlay: refreshOverlay, fridascripts: refreshFridaScripts, aichat: refreshAichat, remoteconfig: refreshRemoteconfig, envsetup: refreshEnvsetup, screenshot: refreshScreenshot, clipboard: refreshClipboard, barcode: refreshBarcode, yeswehack: refreshYeswehack };
 function initTab(name) { (INITS[name] || (() => {}))(); }
 function refreshTab(name) { (REFRESH[name] || (() => {}))(); }
 

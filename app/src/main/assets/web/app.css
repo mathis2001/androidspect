@@ -111,6 +111,8 @@ a:hover { color: var(--accent); }
     border-radius: var(--r-sm);
 }
 .sister-nav a:hover { color: var(--text); background: var(--elevated); }
+.sister-nav a.tab { cursor: pointer; }
+.sister-nav a.tab.active { color: var(--accent); background: var(--accent-bg); }
 
 .header-spacer { flex: 1 1 auto; }
 .header-status { display: flex; gap: 6px; align-items: center; }
@@ -1585,6 +1587,26 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
 }
 .env-cert-hash { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; }
 .env-current { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
+
+/* ---- YesWeHack program list ---- */
+.ywh-list { display: flex; flex-direction: column; gap: 8px; }
+.ywh-card {
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--bg-2); padding: 10px 14px;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.ywh-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ywh-title { font-size: 13px; font-weight: 600; }
+.ywh-card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ywh-detail {
+    display: flex; flex-direction: column; gap: 4px;
+    margin-top: 4px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--bg);
+}
+.ywh-detail-h { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.ywh-detail-h:first-child { margin-top: 0; }
+.ywh-detail-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 /* ---- WebView security findings ---- */
 .wv-row {

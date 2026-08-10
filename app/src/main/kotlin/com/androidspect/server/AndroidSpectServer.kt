@@ -25,6 +25,7 @@ import com.androidspect.server.routes.snapshotRoutes
 import com.androidspect.server.routes.webRoutes
 import com.androidspect.server.routes.sqliteRoutes
 import com.androidspect.server.routes.systemRoutes
+import com.androidspect.server.routes.yesWeHackRoutes
 import com.androidspect.server.ws.logcatWebSocket
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
@@ -184,6 +185,7 @@ class AndroidSpectServer(
                 remoteConfigRoutes(context)
                 fridaScriptRoutes(context)
                 envSetupRoutes(context)
+                yesWeHackRoutes(context)
                 assetRoutes(context)
                 logcatWebSocket()
             }
