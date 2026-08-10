@@ -1822,8 +1822,12 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
 .ai-msg { display: flex; }
 .ai-msg-user      { justify-content: flex-end; }
 .ai-msg-assistant { justify-content: flex-start; }
-.ai-msg-bubble-wrap { display: flex; align-items: flex-start; gap: 6px; max-width: 82%; }
+/* Column stack: tool trace sits above the bubble instead of beside it. */
+.ai-msg-col { display: flex; flex-direction: column; gap: 4px; max-width: 82%; min-width: 0; }
+.ai-msg-bubble-wrap { display: flex; align-items: flex-start; gap: 4px; }
 .ai-msg-user .ai-msg-bubble-wrap { flex-direction: row-reverse; }
+/* Copy / send-to-notes stacked vertically so they take minimal width, leaving room for the message. */
+.ai-msg-actions { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; margin-top: 4px; }
 .ai-msg-bubble {
     flex: 1; min-width: 0;
     padding: 9px 13px; border-radius: 12px;
@@ -1883,7 +1887,7 @@ input[type="color"] { padding: 2px; height: 30px; cursor: pointer; }
 .panel[data-tab="aichat"] { padding: 0; gap: 0; position: relative; }
 
 /* AI tool call trace */
-.ai-tool-trace { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; max-width: 82%; }
+.ai-tool-trace { display: flex; flex-direction: column; gap: 4px; }
 .ai-tool-call  { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 5px 9px; font-size: 11px; }
 .ai-tool-name  { display: block; margin-bottom: 2px; }
 .ai-tool-name code { font-size: 10.5px; background: var(--elevated); padding: 1px 4px; border-radius: 3px; }
@@ -1930,15 +1934,16 @@ details > summary { cursor: pointer; user-select: none; }
 
 .rc-raw { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; white-space: pre-wrap; word-break: break-all; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; max-height: 320px; overflow-y: auto; margin-top: 6px; }
 
-/* AI message copy button */
+/* AI message copy / send-to-notes buttons — stacked in .ai-msg-actions (see above) */
 .ai-copy-btn {
-    flex-shrink: 0; margin-top: 4px;
+    flex-shrink: 0;
     background: none; border: 1px solid var(--line); border-radius: var(--r-sm);
     color: var(--muted); font-size: 13px; cursor: pointer;
     padding: 2px 6px; line-height: 1; opacity: 0; transition: opacity .15s;
 }
 .ai-msg:hover .ai-copy-btn { opacity: 1; }
 .ai-copy-btn:hover { background: var(--elevated); color: var(--text); }
+.ai-notes-btn { display: flex; align-items: center; justify-content: center; }
 
 /* ---- Barcode / QR Generator tab ---- */
 .panel[data-tab="barcode"] { padding: 0; gap: 0; }

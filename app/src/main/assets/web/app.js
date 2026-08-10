@@ -4666,22 +4666,27 @@ function aiRenderMessages() {
                 .replace(/\n/g, '<br>');
         }
 
-        // Copy button only on assistant messages (not user, not typing indicator).
+        // Copy / send-to-notes buttons only on assistant messages (not user, not typing indicator).
         const copyBtn = (!isUser && !isTyping)
             ? `<button class="ai-copy-btn" data-idx="${idx}" title="Copy message">⎘</button>`
             : '';
+        const notesBtn = (!isUser && !isTyping)
+            ? `<button class="ai-copy-btn ai-notes-btn" data-idx="${idx}" title="Send to notes"><svg class="ic ic-xs"><use href="#i-notebook"/></svg></button>`
+            : '';
 
         return `<div class="ai-msg ai-msg-${isUser ? 'user' : 'assistant'}${isError ? ' ai-msg-error' : ''}${isTyping ? ' ai-msg-typing' : ''}">
-            ${toolHtml}
-            <div class="ai-msg-bubble-wrap">
-                <div class="ai-msg-bubble">${html}</div>
-                ${copyBtn}
+            <div class="ai-msg-col">
+                ${toolHtml}
+                <div class="ai-msg-bubble-wrap">
+                    <div class="ai-msg-bubble">${html}</div>
+                    ${(notesBtn || copyBtn) ? `<div class="ai-msg-actions">${notesBtn}${copyBtn}</div>` : ''}
+                </div>
             </div>
         </div>`;
     }).join('');
 
     // Wire copy buttons after render.
-    $$('.ai-copy-btn', el).forEach(btn => {
+    $$('.ai-copy-btn:not(.ai-notes-btn)', el).forEach(btn => {
         btn.addEventListener('click', () => {
             const msg = aiMessages[+btn.dataset.idx];
             if (!msg) return;
@@ -4691,6 +4696,32 @@ function aiRenderMessages() {
             );
         });
     });
+    // Wire send-to-notes buttons.
+    $$('.ai-notes-btn', el).forEach(btn => {
+        btn.addEventListener('click', () => {
+            const msg = aiMessages[+btn.dataset.idx];
+            if (msg) aiSendToNotes(msg.content);
+        });
+    });
+}
+
+/**
+ * Appends an AI chat message to the Notes editor for the current package
+ * and lets the existing autosave pipeline persist it. This is the only way
+ * AI output reaches the notes file — always an explicit user click, never
+ * an autonomous write by the model itself.
+ */
+function aiSendToNotes(content) {
+    const rail = $('#notes-rail');
+    if (!S.pkg || !rail || rail.hidden) { toast('Select an app first', 'err'); return; }
+    const ed = $('#notes-editor');
+    const stamp = new Date().toLocaleString();
+    const block = `## AI note — ${stamp}\n\n${content.trim()}\n`;
+    const existing = ed.value.replace(/\n*$/, '');
+    ed.value = existing ? `${existing}\n\n---\n\n${block}` : block;
+    notesEditorFireInput();
+    if (notesPreview) notesRenderPreview();
+    toast('Added to notes', 'ok');
 }
 
 function aiScrollBottom() {
