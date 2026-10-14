@@ -1,14 +1,23 @@
 package com.androidspect.server.routes
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.androidspect.root.AppActions
+import com.androidspect.root.RootBridge
+import com.androidspect.root.Sanitize
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +31,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -49,6 +59,9 @@ import java.net.URL
  *   PUT    /api/ywh/token                → { token } - store (encrypted)
  *   DELETE /api/ywh/token                → clear stored token + cached programs
  *   GET    /api/ywh/programs?refresh=1   → cached or freshly-fetched program list
+ *   GET    /api/ywh/programs/{slug}/scope.md → current scope policy as Markdown
+ *   POST   /api/ywh/apps/install         → open the app in Play Store on this device
+ *   GET    /api/ywh/apps/{pkg}/status    → report whether the package is installed
  */
 private const val YWH_BASE = "https://api.yeswehack.com"
 private const val YWH_KEY_ALIAS = "androidspect_ywh_key"
@@ -145,6 +158,152 @@ fun Routing.yesWeHackRoutes(context: Context) {
                 else -> call.respondText(body, ContentType.Application.Json)
             }
         }
+
+        get("/programs/{slug}/scope.md") {
+            val token = loadToken()
+                ?: return@get call.respond(HttpStatusCode.BadRequest,
+                    mapOf("error" to "No YesWeHack token configured. Set one in the Env Setup tab."))
+            val slug = call.parameters["slug"]?.takeIf { YWH_SLUG.matches(it) }
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid program slug"))
+
+            val (code, body) = withContext(Dispatchers.IO) { ywhGet("$YWH_BASE/programs/$slug", token) }
+            when {
+                code == 401 -> call.respond(HttpStatusCode.Unauthorized,
+                    mapOf("error" to "YesWeHack token expired or invalid. Update it in Env Setup."))
+                code !in 200..299 -> call.respond(HttpStatusCode.BadGateway,
+                    mapOf("error" to "YesWeHack returned HTTP $code for '$slug'."))
+                else -> {
+                    val detail = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                        ?: return@get call.respond(HttpStatusCode.BadGateway,
+                            mapOf("error" to "YesWeHack returned invalid program data for '$slug'."))
+                    call.response.header(
+                        HttpHeaders.ContentDisposition,
+                        ContentDisposition.Attachment
+                            .withParameter(ContentDisposition.Parameters.FileName, "scope.md").toString()
+                    )
+                    call.respondText(buildScopeMarkdown(detail, slug), ContentType.parse("text/markdown"))
+                }
+            }
+        }
+
+        /**
+         * Google Play does not expose an APK at the public listing URL. Hand the
+         * package to the device's authenticated Play Store. The Play Store owns
+         * the actual install so account, entitlement, region and compatibility
+         * checks remain identical to a normal on-device installation.
+         */
+        post("/apps/install") {
+            val request = call.receive<YwhPlayInstallRequest>()
+            val pkg = playStorePackageName(request.url)
+                ?: return@post call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "A valid Google Play app URL with an id parameter is required.")
+                )
+
+            if (AppActions.apkPaths(pkg).isNotEmpty()) {
+                return@post call.respond(YwhPlayInstallStatus.installed(pkg))
+            }
+
+            val marketUri = "market://details?id=$pkg"
+            val shellLaunch = RootBridge.exec(
+                "am start -a android.intent.action.VIEW -d ${Sanitize.shellQuote(marketUri)} -p com.android.vending"
+            )
+            val launched = shellLaunch.ok || runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).apply {
+                    setPackage("com.android.vending")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }.recoverCatching {
+                context.startActivity(Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
+                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+            }.isSuccess
+
+            if (!launched) {
+                return@post call.respond(
+                    HttpStatusCode.BadGateway,
+                    mapOf("error" to "Could not open a Play Store client on the Android device.")
+                )
+            }
+            call.respond(YwhPlayInstallStatus.opened(pkg))
+        }
+
+        get("/apps/{pkg}/status") {
+            val pkg = validPackageName(call.parameters["pkg"])
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid package name"))
+            val paths = AppActions.apkPaths(pkg)
+            call.respond(if (paths.isEmpty()) YwhPlayInstallStatus.pending(pkg)
+                else YwhPlayInstallStatus.installed(pkg))
+        }
+    }
+}
+
+private val ANDROID_PACKAGE = Regex("^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")
+private val YWH_SLUG = Regex("^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+private fun validPackageName(value: String?): String? =
+    value?.trim()?.takeIf { ANDROID_PACKAGE.matches(it) }
+
+/** Accept only genuine Play listing URLs; never turn an arbitrary URL into an intent. */
+private fun playStorePackageName(value: String): String? = runCatching {
+    val uri = Uri.parse(value.trim())
+    val scheme = uri.scheme?.lowercase()
+    val isMarket = scheme == "market" && uri.host.equals("details", ignoreCase = true)
+    val isWeb = scheme in setOf("http", "https") &&
+        uri.host?.lowercase() in setOf("play.google.com", "market.android.com") &&
+        uri.path?.trimEnd('/')?.endsWith("/store/apps/details") == true
+    if (!isMarket && !isWeb) return@runCatching null
+    validPackageName(uri.getQueryParameter("id"))
+}.getOrNull()
+
+private fun buildScopeMarkdown(program: JsonObject, fallbackSlug: String): String {
+    fun string(key: String): String? = program[key]?.jsonPrimitive?.contentOrNull
+        ?.trim()?.takeIf(String::isNotEmpty)
+    fun strings(key: String): List<String> = program[key]?.jsonArray
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty) }
+        .orEmpty()
+    fun bullet(value: String): String = value.lines().map(String::trimEnd)
+        .joinToString("\n  ", prefix = "- ")
+    fun section(items: List<String>): String = if (items.isEmpty()) "_None specified._"
+        else items.joinToString("\n") { bullet(it) }
+
+    val slug = string("slug") ?: fallbackSlug
+    val title = string("title") ?: slug
+    val scopes = program["scopes"]?.jsonArray.orEmpty().mapNotNull { element ->
+        val scope = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null
+        val target = scope["scope"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+        if (target.isEmpty()) return@mapNotNull null
+        val type = (scope["scope_type_name"] ?: scope["scope_type"])
+            ?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+        if (type.isEmpty()) target else "$target — $type"
+    }
+    val outOfScope = strings("out_of_scope")
+    val outOfScopeVulnerabilities = strings("non_qualifying_vulnerability")
+    val userAgent = string("user_agent") ?: string("ywh_triager_user_agent")
+
+    return buildString {
+        appendLine("# $title — Scope")
+        appendLine()
+        appendLine("- Program: https://yeswehack.com/programs/$slug")
+        string("last_update_at")?.let { appendLine("- Last updated by YesWeHack: $it") }
+        appendLine()
+        appendLine("## In-scope URLs and targets")
+        appendLine()
+        appendLine(section(scopes))
+        appendLine()
+        appendLine("## Out-of-scope parts")
+        appendLine()
+        appendLine(section(outOfScope))
+        appendLine()
+        appendLine("## Out-of-scope vulnerabilities")
+        appendLine()
+        appendLine(section(outOfScopeVulnerabilities))
+        appendLine()
+        appendLine("## User-Agent to use")
+        appendLine()
+        if (userAgent == null) appendLine("_None specified._")
+        else userAgent.lines().forEach { appendLine("    $it") }
     }
 }
 
@@ -228,3 +387,14 @@ private fun ywhGet(url: String, token: String): Pair<Int, String> {
 
 @Serializable data class YwhTokenRequest(val token: String = "")
 @Serializable data class YwhTokenStatus(val present: Boolean, val savedAt: Long? = null)
+@Serializable data class YwhPlayInstallRequest(val url: String = "")
+@Serializable data class YwhPlayInstallStatus(
+    val packageName: String,
+    val status: String
+) {
+    companion object {
+        fun opened(pkg: String) = YwhPlayInstallStatus(pkg, "play_store_opened")
+        fun pending(pkg: String) = YwhPlayInstallStatus(pkg, "pending")
+        fun installed(pkg: String) = YwhPlayInstallStatus(pkg, "installed")
+    }
+}

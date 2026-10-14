@@ -29,7 +29,7 @@ Per-package static inspection and dynamic tests:
   * Reports writing
   * Diff analysis
   * Frida scripts & Exploit development
-* A YesWeHack tab that lists bug bounty programs declaring a Mobile (Android) scope, with public/private, bounty-only, and date-based filters. Since hunters aren't issued long-lived API keys, it authenticates with a session JWT you paste into Env Setup.
+* A YesWeHack tab that lists bug bounty programs declaring a Mobile (Android) scope, with public/private, bounty-only, and date-based filters. Play Store scope targets include an Install button that opens the authenticated Play Store on the Android device and reports when installation completes. Each program can export a live `scope.md` containing in-scope targets, out-of-scope parts and vulnerabilities, and the required User-Agent for reuse by AI agents. Since hunters aren't issued long-lived API keys, it authenticates with a session JWT you paste into Env Setup.
 
 Live runtime:
 

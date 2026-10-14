@@ -5158,6 +5158,8 @@ let ywhFetchedAt = null;
 let ywhStatusBase = '';   // status text set by the last fetch; ywhRender() appends to it, never overwrites it
 let ywhDetailCache = new Map(); // slug -> full program detail (lazily fetched by "More info")
 let ywhExpanded = new Set();    // slugs currently showing their detail panel
+let ywhInstallState = new Map(); // Play URL -> { status, packageName, message }
+let ywhInstallPollers = new Map(); // Play URL -> timeout id
 
 // The YesWeHack API's exact date field names on /programs weren't
 // confirmed against a live token, so instead of a fixed key list (which
@@ -5222,6 +5224,9 @@ async function ywhFetch(refresh) {
         ywhFetchedAt = r.fetchedAt || Date.now();
         ywhDetailCache = new Map();
         ywhExpanded = new Set();
+        ywhInstallPollers.forEach(clearTimeout);
+        ywhInstallPollers = new Map();
+        ywhInstallState = new Map();
         ywhStatusBase = `${ywhPrograms.length} program(s) with a Mobile (Android) scope` +
             (r.skipped ? ` · ${r.skipped} skipped (fetch errors)` : '') +
             ` · fetched ${new Date(+ywhFetchedAt).toLocaleString()}`;
@@ -5294,6 +5299,8 @@ function ywhRender() {
 
     body.innerHTML = `<div class="ywh-list">${list.map(ywhCard).join('')}</div>`;
     $$('.ywh-more-btn', body).forEach(btn => btn.addEventListener('click', () => ywhToggleDetail(btn.dataset.slug)));
+    $$('.ywh-scope-btn', body).forEach(btn => btn.addEventListener('click', () => ywhDownloadScope(btn.dataset.slug, btn)));
+    $$('.ywh-install-btn', body).forEach(btn => btn.addEventListener('click', () => ywhInstall(btn.dataset.url)));
 }
 
 function ywhCard(p) {
@@ -5325,12 +5332,27 @@ function ywhCard(p) {
     ].filter(Boolean).join(' · ');
 
     const isOpen = ywhExpanded.has(slug);
+    const playTargets = [];
+    const seenPlayPackages = new Set();
+    (p.scopes || [])
+        .filter(s => (s.scope_type || '').toLowerCase().includes('android'))
+        .forEach(s => {
+            const info = ywhPlayTarget(s.scope || '');
+            if (info && !seenPlayPackages.has(info.packageName)) {
+                seenPlayPackages.add(info.packageName);
+                playTargets.push(info);
+            }
+        });
+    const installLine = playTargets.length
+        ? `<div class="ywh-card-installs">${playTargets.map(info => ywhInstallButton(info, true)).join('')}</div>`
+        : '';
 
     return `<div class="ywh-card">
         <div class="ywh-card-head">
             <span class="ywh-title">${title}</span>
             ${badges}
             <a class="link" href="${fmt.esc(url)}" target="_blank" rel="noopener" style="margin-left:auto">Open ↗</a>
+            <button class="btn ghost small ywh-scope-btn" data-slug="${fmt.esc(slug)}" title="Download current scope policy for reuse by AI agents">scope.md ↓</button>
             <button class="btn ghost small ywh-more-btn" data-slug="${fmt.esc(slug)}">${isOpen ? 'Hide info' : 'More info'}</button>
         </div>
         <div class="ywh-card-meta">
@@ -5338,8 +5360,34 @@ function ywhCard(p) {
             ${rewardLine}
             ${dateLine ? `<span class="muted small">${fmt.esc(dateLine)}</span>` : ''}
         </div>
+        ${installLine}
         ${isOpen ? ywhCardDetail(slug) : ''}
     </div>`;
+}
+
+async function ywhDownloadScope(slug, btn) {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Building…';
+    try {
+        const response = await fetchAuthed(`/api/ywh/programs/${encodeURIComponent(slug)}/scope.md`);
+        if (!response.ok) throw await explainError(response);
+        const blob = await response.blob();
+        const href = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = 'scope.md';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 1000);
+        toast(`Downloaded scope.md for ${slug}`, 'ok');
+    } catch (e) {
+        toast(e.message, 'err');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
 }
 
 /**
@@ -5356,18 +5404,105 @@ function ywhCardDetail(slug) {
 
     const androidScopes = (d.scopes || []).filter(s => (s.scope_type || '').toLowerCase().includes('android'));
     const scopeHtml = androidScopes.length
-        ? androidScopes.map(s => {
-            const target = s.scope || '';
-            return /^https?:\/\//i.test(target)
-                ? `<a class="link mono small" href="${fmt.esc(target)}" target="_blank" rel="noopener">${fmt.esc(target)}</a>`
-                : `<code class="mono small">${fmt.esc(target)}</code>`;
-        }).join('<br>')
+        ? androidScopes.map(s => ywhTarget(s.scope || '')).join('')
         : '<span class="muted small">No Android scope target listed.</span>';
 
     return `<div class="ywh-detail">
         <div class="ywh-detail-h">In-scope Android targets</div>
         <div class="ywh-detail-body">${scopeHtml}</div>
     </div>`;
+}
+
+function ywhPlayTarget(target) {
+    try {
+        const text = String(target || '').trim();
+        const match = text.match(/(?:https?:\/\/(?:play\.google\.com|market\.android\.com)\/store\/apps\/details\??[^\s<>"']*|market:\/\/details\?[^\s<>"']+)/i);
+        if (!match) return null;
+        const candidate = match[0].replace(/[),.;]+$/, '');
+        const u = new URL(candidate);
+        const web = ['http:', 'https:'].includes(u.protocol) &&
+            ['play.google.com', 'market.android.com'].includes(u.hostname.toLowerCase()) &&
+            u.pathname.replace(/\/$/, '').endsWith('/store/apps/details');
+        const market = u.protocol === 'market:' && u.hostname.toLowerCase() === 'details';
+        if (!web && !market) return null;
+        const pkg = u.searchParams.get('id') || '';
+        if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(pkg)) return null;
+        return {
+            packageName: pkg,
+            url: `https://play.google.com/store/apps/details?id=${encodeURIComponent(pkg)}`
+        };
+    } catch (_) { return null; }
+}
+
+function ywhTarget(target) {
+    const isUrl = /^https?:\/\//i.test(target);
+    const link = isUrl
+        ? `<a class="link mono small" href="${fmt.esc(target)}" target="_blank" rel="noopener">${fmt.esc(target)}</a>`
+        : `<code class="mono small">${fmt.esc(target)}</code>`;
+    const info = ywhPlayTarget(target);
+    if (!info) return `<div class="ywh-target">${link}</div>`;
+    return `<div class="ywh-target">${link}${ywhInstallButton(info, false)}</div>`;
+}
+
+function ywhInstallButton(info, compact) {
+    const state = ywhInstallState.get(info.url) || {};
+    const busy = ['starting', 'play_store_opened', 'pending'].includes(state.status);
+    const installed = state.status === 'installed';
+    const label = installed ? 'Installed' : state.status === 'starting' ? 'Opening…' :
+        busy ? 'Waiting for install…' : compact ? `Install ${info.packageName}` : 'Install';
+    const status = !compact && state.message
+        ? `<span class="muted small ywh-install-status">${fmt.esc(state.message)}</span>` : '';
+    return `<span class="ywh-install-control">
+        <button class="btn small ywh-install-btn" data-url="${fmt.esc(info.url)}" ${busy || installed ? 'disabled' : ''}>${fmt.esc(label)}</button>
+        ${status}
+    </span>`;
+}
+
+async function ywhInstall(url) {
+    ywhInstallState.set(url, { status: 'starting', message: 'Opening Play Store on the device…' });
+    ywhRender();
+    try {
+        const result = await api.post('/api/ywh/apps/install', { url });
+        if (result.status === 'installed') {
+            ywhInstallState.set(url, { status: 'installed', packageName: result.packageName, message: 'Installed on device' });
+            toast(`${result.packageName} is already installed`, 'ok');
+        } else {
+            ywhInstallState.set(url, {
+                status: 'play_store_opened', packageName: result.packageName,
+                message: 'Play Store opened on the device. Complete the installation there.'
+            });
+            toast('Play Store opened on the device', 'ok');
+            ywhPollInstall(url, result.packageName, 0);
+        }
+    } catch (e) {
+        ywhInstallState.set(url, { status: 'error', message: e.message });
+        toast(e.message, 'err');
+    }
+    ywhRender();
+}
+
+function ywhPollInstall(url, pkg, attempt) {
+    clearTimeout(ywhInstallPollers.get(url));
+    if (attempt >= 300) {
+        ywhInstallPollers.delete(url);
+        ywhInstallState.set(url, { status: 'timeout', packageName: pkg, message: 'Install was not detected. Tap Install to reopen Play Store.' });
+        ywhRender();
+        return;
+    }
+    const timer = setTimeout(async () => {
+        try {
+            const result = await api.get(`/api/ywh/apps/${encodeURIComponent(pkg)}/status`);
+            if (result.status === 'installed') {
+                ywhInstallPollers.delete(url);
+                ywhInstallState.set(url, { status: 'installed', packageName: pkg, message: 'Installed on device' });
+                toast(`${pkg} installed on device`, 'ok');
+                ywhRender();
+                return;
+            }
+        } catch (_) { /* transient status errors are retried */ }
+        ywhPollInstall(url, pkg, attempt + 1);
+    }, 2000);
+    ywhInstallPollers.set(url, timer);
 }
 
 async function ywhToggleDetail(slug) {
